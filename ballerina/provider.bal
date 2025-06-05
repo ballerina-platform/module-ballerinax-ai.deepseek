@@ -181,7 +181,7 @@ public isolated client class Provider {
                     foreach ai:FunctionCall 'function in toolCalls {
                         DeepseekChatResponseFunction functionCall = {
                             name: 'function.name,
-                            arguments: 'function.arguments
+                            arguments: 'function.arguments.toJsonString()
                         };
                         DeepseekChatResponseToolCall tool = {
                             'function: functionCall,
@@ -224,12 +224,19 @@ public isolated client class Provider {
 
         ai:FunctionCall[] functionCalls = [];
         foreach DeepseekChatResponseToolCall toolCall in toolCalls {
-            functionCalls.push({
-                name: toolCall.'function.name,
-                id: toolCall.id,
-                arguments: toolCall.'function.arguments.toString()
-            });
+            functionCalls.push(check self.mapToFunctionCall(toolCall));
         }
         return {role: ai:ASSISTANT, toolCalls: functionCalls, content: content};
+    }
+
+    private isolated function mapToFunctionCall(DeepseekChatResponseToolCall toolCall)
+    returns ai:FunctionCall|ai:LlmError {
+        do {
+            json jsonArgs = check toolCall.'function.arguments.fromJsonString();
+            map<json>? arguments = check jsonArgs.cloneWithType();
+            return {name: toolCall.'function.name, arguments, id: toolCall.id};
+        } on fail error e {
+            return error ai:LlmError("Invalid or malformed arguments received in function call response.", e);
+        }
     }
 }

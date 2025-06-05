@@ -18,7 +18,8 @@ import ballerina/ai;
 import ballerina/http;
 
 public enum DEEPSEEK_MODEL_NAMES {
-    DEEPSEEK_CHAT = "deepseek-chat"
+    DEEPSEEK_CHAT = "deepseek-chat",
+    DEEPSEEK_REASONER = "deepseek-reasoner"
 }
 
 # Configurations for controlling the behaviours when communicating with a remote HTTP endpoint.

@@ -83,7 +83,7 @@ public isolated client class Provider {
     # + return - Function to be called, chat response or an error in-case of failures
     isolated remote function chat(ai:ChatMessage[] messages, ai:ChatCompletionFunctions[] tools, string? stop = ())
     returns ai:ChatAssistantMessage|ai:LlmError {
-        DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.mapDeepseekMessages(messages);
+        DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.prepareDeepseekRequestMessages(messages);
 
         DeepSeekChatCompletionRequest request = {
             messages: deepseekPayloadMessages,
@@ -157,7 +157,7 @@ public isolated client class Provider {
     #
     # + messages - Array of chat messages to be converted
     # + return - An `ai:LlmError` or an array of Mistral message records
-    private isolated function mapDeepseekMessages(ai:ChatMessage[] messages)
+    private isolated function prepareDeepseekRequestMessages(ai:ChatMessage[] messages)
         returns DeepSeekChatRequestMessages[]|ai:LlmError {
         DeepSeekChatRequestMessages[] deepseekMessages = [];
         foreach ai:ChatMessage message in messages {

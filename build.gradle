@@ -60,7 +60,7 @@ allprojects {
 def moduleVersion = project.version.replace("-SNAPSHOT", "")
 
 task build {
-    dependsOn(':ai.model.provider.deepseek-ballerina:build')
+    dependsOn(':ai.deepseek-ballerina:build')
 }
 
 release {

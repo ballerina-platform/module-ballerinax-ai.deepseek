@@ -28,6 +28,7 @@ public isolated client class ModelProvider {
     private final http:Client llmClient;
     private final int maxTokens;
     private final DEEPSEEK_MODEL_NAMES modelType;
+    private final decimal temperature;
 
     # Initializes the Deepseek model client with the provided configurations.
     #
@@ -42,7 +43,7 @@ public isolated client class ModelProvider {
             @display {label: "Model Type"} DEEPSEEK_MODEL_NAMES modelType = DEEPSEEK_CHAT,
             @display {label: "Service URL"} string serviceUrl = DEFAULT_DEEPSEEK_SERVICE_URL,
             @display {label: "Maximum Token"} int maxTokens = DEFAULT_MAX_TOKEN_COUNT,
-            @display {label: "Temperature"} decimal temperateure = DEFAULT_TEMPERATURE,
+            @display {label: "Temperature"} decimal temperature = DEFAULT_TEMPERATURE,
             @display {label: "Connection Configuration"} *ConnectionConfig connectionConfig
     ) returns ai:Error? {
 
@@ -73,6 +74,7 @@ public isolated client class ModelProvider {
         self.maxTokens = maxTokens;
         self.modelType = modelType;
         self.llmClient = httpClient;
+        self.temperature = temperature;
     }
 
     # Generates a chat completion message from a Deepseek model
@@ -86,6 +88,7 @@ public isolated client class ModelProvider {
         DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.prepareDeepseekRequestMessages(messages);
 
         DeepSeekChatCompletionRequest request = {
+            temperature: self.temperature,
             messages: deepseekPayloadMessages,
             model: self.modelType,
             max_tokens: self.maxTokens,

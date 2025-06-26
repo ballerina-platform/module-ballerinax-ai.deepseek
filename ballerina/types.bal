@@ -152,6 +152,6 @@ type DeepSeekChatCompletionRequest record {|
     DEEPSEEK_MODEL_NAMES model;
     int? max_tokens;
     string?|string[]? stop = ();
-    int? temperature = 1;
+    decimal? temperature = 1;
     DeepseekTool[]? tools = ();
 |};

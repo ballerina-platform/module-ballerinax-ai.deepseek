@@ -22,7 +22,7 @@ import io.ballerina.projects.plugins.CompilerPlugin;
 import io.ballerina.projects.plugins.CompilerPluginContext;
 
 /**
- * Compiler plugin for the Ballerina AI package.
+ * Compiler plugin for the Ballerina AI DeepSeek package.
  */
 @SuppressWarnings("unused")
 public class AiDeepseekCompilerPlugin extends CompilerPlugin {

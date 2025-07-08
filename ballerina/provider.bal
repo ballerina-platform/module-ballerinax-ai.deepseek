@@ -155,7 +155,7 @@ public isolated client class Provider {
             if message is DeepseekChatAssistantMessage && message.tool_calls is DeepseekChatResponseToolCall[] {
                 DeepseekChatResponseToolCall[]? tools = message.tool_calls;
                 if tools is () {
-                    return error ai:LlmError("No tool calls found in the assistant message");
+                    return error("No tool calls found in the assistant message");
                 }
                 if tools.length() > 0 {
                     return tools[0].id;
@@ -249,7 +249,7 @@ public isolated client class Provider {
             map<json>? arguments = check jsonArgs.cloneWithType();
             return {name: toolCall.'function.name, arguments, id: toolCall.id};
         } on fail error e {
-            return error ai:LlmError("Invalid or malformed arguments received in function call response.", e);
+            return error("Invalid or malformed arguments received in function call response.", e);
         }
     }
 }

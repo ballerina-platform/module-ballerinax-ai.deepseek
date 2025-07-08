@@ -24,7 +24,7 @@ import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BTypedesc;
 
 /**
- * This class provides the native function to generate a response from an Deepseek AI model.
+ * This class provides the native function to generate a response from a Deepseek AI model.
  *
  * @since 1.0.0
  */

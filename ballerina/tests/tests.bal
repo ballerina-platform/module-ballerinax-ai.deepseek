@@ -29,9 +29,9 @@ function testGenerateMethodWithBasicReturnType() returns ai:Error? {
     int|error rating = deepseekProvider->generate(`Rate this blog out of 10.
         Title: ${blog1.title}
         Content: ${blog1.content}`);
-    
+
     if rating is error {
-        test:assertFail(rating.message());  
+        test:assertFail(rating.message());
     }
     test:assertEquals(rating, 4);
 }
@@ -44,9 +44,9 @@ function testGenerateMethodWithBasicArrayReturnType() returns ai:Error? {
 
         Title: ${blog1.title}
         Content: ${blog1.content}`);
-    
+
     if rating is error {
-        test:assertFail(rating.message());  
+        test:assertFail(rating.message());
     }
     test:assertEquals(rating, [9, 1]);
 }
@@ -57,7 +57,7 @@ function testGenerateMethodWithRecordReturnType() returns error? {
         Title: ${blog2.title}
         Content: ${blog2.content}`);
     if result is error {
-        test:assertFail(result.message());  
+        test:assertFail(result.message());
     }
     test:assertEquals(result, check review.fromJsonStringWithType(Review));
 }
@@ -116,7 +116,7 @@ function testGenerateMethodWithRecordArrayReturnType() returns error? {
 
     ReviewArray|error result = deepseekProvider->generate(`Please rate this blogs out of ${maxScore}.
         [{Title: ${blog1.title}, Content: ${blog1.content}}, {Title: ${blog2.title}, Content: ${blog2.content}}]`);
-    
+
     if result is error {
         test:assertFail(result.message());
     }
@@ -130,23 +130,25 @@ function testGenerateMethodWithInvalidBasicType() returns ai:Error? {
     test:assertTrue((<error>rating).message().includes(ERROR_MESSAGE));
 }
 
-type RecordForInvalidBinding record {|
+type ProductName record {|
     string name;
 |};
 
 @test:Config
 function testGenerateMethodWithInvalidRecordType() returns ai:Error? {
-    RecordForInvalidBinding[]|error rating = trap deepseekProvider->generate(
+    ProductName[]|error rating = trap deepseekProvider->generate(
                 `Tell me name and the age of the top 10 world class cricketers`);
+    string msg = (<error>rating).message();
     test:assertTrue(rating is error);
-    test:assertTrue((<error>rating).message().includes(RUNTIME_SCHEMA_NOT_SUPPORTED_ERROR_MESSAGE));
+    test:assertTrue(msg.includes(RUNTIME_SCHEMA_NOT_SUPPORTED_ERROR_MESSAGE),
+        string `expected error message to contain: ${RUNTIME_SCHEMA_NOT_SUPPORTED_ERROR_MESSAGE}, but found ${msg}`);
 }
 
-type InvalidRecordArray RecordForInvalidBinding[];
+type ProductNameArray ProductName[];
 
 @test:Config
-function testGenerateMethodWithInvalidRecordType2() returns ai:Error? {
-    InvalidRecordArray|error rating = deepseekProvider->generate(
+function testGenerateMethodWithInvalidRecordArrayType2() returns ai:Error? {
+    ProductNameArray|error rating = deepseekProvider->generate(
                 `Tell me name and the age of the top 10 world class cricketers`);
     test:assertTrue(rating is error);
     test:assertTrue((<error>rating).message().includes(ERROR_MESSAGE));

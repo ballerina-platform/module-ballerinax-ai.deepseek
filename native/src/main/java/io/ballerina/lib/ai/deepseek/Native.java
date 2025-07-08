@@ -15,6 +15,7 @@
  */
 package io.ballerina.lib.ai.deepseek;
 
+import io.ballerina.runtime.api.Module;
 import io.ballerina.runtime.api.creators.ErrorCreator;
 import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
@@ -39,8 +40,12 @@ import static io.ballerina.runtime.api.creators.ValueCreator.createMapValue;
 public class Native {
     public static Object generateJsonSchemaForTypedescNative(BTypedesc td) {
         SchemaGenerationContext schemaGenerationContext = new SchemaGenerationContext();
-        Object schema = generateJsonSchemaForType(td.getDescribingType(), schemaGenerationContext);
-        return schemaGenerationContext.isSchemaGeneratedAtCompileTime ? schema : null;
+        try {
+            Object schema = generateJsonSchemaForType(td.getDescribingType(), schemaGenerationContext);
+            return schemaGenerationContext.isSchemaGeneratedAtCompileTime ? schema : null;
+        } catch (BError e) {
+            return createAIError(e.getErrorMessage());
+        }
     }
 
     private static Object generateJsonSchemaForType(Type t, SchemaGenerationContext schemaGenerationContext)
@@ -105,6 +110,11 @@ public class Native {
     public static BTypedesc getArrayMemberType(BTypedesc expectedResponseTypedesc) {
         return ValueCreator.createTypedescValue(
                 ((ArrayType) TypeUtils.getImpliedType(expectedResponseTypedesc.getDescribingType())).getElementType());
+    }
+
+    private static BError createAIError(BString message) {
+        return ErrorCreator.createError(new Module("ballerina", "ai", "1"),
+                "Error", message, null, null);
     }
 
     public static boolean containsNil(BTypedesc expectedResponseTypedesc) {

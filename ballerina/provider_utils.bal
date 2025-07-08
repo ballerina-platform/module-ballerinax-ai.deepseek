@@ -140,7 +140,7 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
     ResponseSchema ResponseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
     DeepseekTool[]|error tools = getGetResultsTool(ResponseSchema.schema);
     if tools is error {
-        return error("Error while generating the tool: " + tools.message());
+        return error("Error in generated schema: " + tools.message());
     }
 
 

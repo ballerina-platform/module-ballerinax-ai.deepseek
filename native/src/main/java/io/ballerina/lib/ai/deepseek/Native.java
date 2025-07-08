@@ -59,7 +59,7 @@ public class Native {
             case JsonType ignored -> generateJsonSchemaForJson();
             case ArrayType arrayType -> generateJsonSchemaForArrayType(arrayType, schemaGenerationContext);
             default -> throw ErrorCreator.createError(StringUtils.fromString(
-                    "Runtime schema generation is not yet supported for type: " + impliedType.getName()));
+                    "Runtime schema generation is not yet supported for type " + impliedType.getName()));
         };
     }
 

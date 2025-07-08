@@ -207,18 +207,18 @@ class GenerateMethodModificationTask implements ModifierTask<SourceModifierConte
         private final SemanticModel semanticModel;
         private final Document document;
         private final TypeMapper typeMapper;
-        private final ClassSymbol anthropicProviderSymbol;
+        private final ClassSymbol deepseekProviderSymbol;
 
         public GenerateMethodJsonSchemaGenerator(SemanticModel semanticModel, Document document,
                                                  AiDeepseekCodeModifier.AnalysisData analyserData) {
             this.semanticModel = semanticModel;
             this.document = document;
             this.typeMapper = analyserData.typeMapper;
-            this.anthropicProviderSymbol = getDeepSeekProviderSymbol(document.syntaxTree().rootNode()).orElse(null);
+            this.deepseekProviderSymbol = getDeepSeekProviderSymbol(document.syntaxTree().rootNode()).orElse(null);
         }
 
         void generate(ModulePartNode modulePartNode) {
-            if (anthropicProviderSymbol == null) {
+            if (deepseekProviderSymbol == null) {
                 return;
             }
             visit(modulePartNode);
@@ -233,21 +233,17 @@ class GenerateMethodModificationTask implements ModifierTask<SourceModifierConte
 
             ExpressionNode expression = remoteMethodCallActionNode.expression();
             semanticModel.typeOf(expression).ifPresent(expressionTypeSymbol -> {
-                if (expressionTypeSymbol.subtypeOf(this.anthropicProviderSymbol)) {
+                if (expressionTypeSymbol.subtypeOf(this.deepseekProviderSymbol)) {
                     updateTypeSchemaForTypeDef(remoteMethodCallActionNode);
                 }
             });
         }
 
         private void updateTypeSchemaForTypeDef(RemoteMethodCallActionNode remoteMethodCallActionNode) {
-            semanticModel.typeOf(remoteMethodCallActionNode).ifPresent(expTypeSymbol -> {
-                if (expTypeSymbol.subtypeOf(this.anthropicProviderSymbol)) {
-                    updateTypeSchemaForType(expTypeSymbol);
-                }
-            });
+            semanticModel.typeOf(remoteMethodCallActionNode).ifPresent(this::updateTypeSchema);
         }
 
-        private void updateTypeSchemaForType(TypeSymbol expTypeSymbol) {
+        private void updateTypeSchema(TypeSymbol expTypeSymbol) {
             if (!(expTypeSymbol instanceof UnionTypeSymbol expTypeUnionSymbol)) {
                 return;
             }
@@ -280,12 +276,12 @@ class GenerateMethodModificationTask implements ModifierTask<SourceModifierConte
         }
 
         private Optional<ClassSymbol> getDeepSeekProviderSymbol(Node node) {
-            Optional<ModuleSymbol> anthropicModuleSymbol = getDeepSeekModuleSymbol(node);
-            if (anthropicModuleSymbol.isEmpty()) {
+            Optional<ModuleSymbol> deepseekModuleSymbol = getDeepSeekModuleSymbol(node);
+            if (deepseekModuleSymbol.isEmpty()) {
                 return Optional.empty();
             }
 
-            for (ClassSymbol classSymbol: anthropicModuleSymbol.get().classes()) {
+            for (ClassSymbol classSymbol: deepseekModuleSymbol.get().classes()) {
                 if (classSymbol.nameEquals(DEEPSEEK_MODEL_PROVIDER_NAME)) {
                     return Optional.of(classSymbol);
                 }

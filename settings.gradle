@@ -30,7 +30,7 @@ plugins {
     id "com.gradle.enterprise" version "3.2"
 }
 
-rootProject.name = 'module-ballerinax-ai.model.provider.deepseek'
+rootProject.name = 'module-ballerinax-ai.deepseek'
 
 include ':checkstyle'
 include ':ai.model.provider.deepseek-native'

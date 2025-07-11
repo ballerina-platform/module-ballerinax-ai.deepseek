@@ -1,7 +1,7 @@
 # Ballerina Deepseek Model Provider Library
 
-[![Build](https://github.com/ballerina-platform/module-ballerinax-ai.model.provider.deepseek/workflows/CI/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-ai.model.provider.deepseek/actions?query=workflow%3ACI)
-[![GitHub Last Commit](https://img.shields.io/github/last-commit/ballerina-platform/module-ballerinax-ai.model.provider.deepseek.svg)](https://github.com/ballerina-platform/module-ballerinax-ai.model.provider.deepseek/commits/master)
+[![Build](https://github.com/ballerina-platform/module-ballerinax-ai.deepseek/workflows/CI/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-ai.deepseek/actions?query=workflow%3ACI)
+[![GitHub Last Commit](https://img.shields.io/github/last-commit/ballerina-platform/module-ballerinax-ai.deepseek.svg)](https://github.com/ballerina-platform/module-ballerinax-ai.deepseek/commits/master)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Overview

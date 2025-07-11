@@ -1,5 +1,5 @@
 [plugin]
-id = "ai-compiler-plugin"
+id = "ai-deepseek-compiler-plugin"
 class = "io.ballerina.lib.ai.deepseek.AiDeepseekCompilerPlugin"
 
 [[dependency]]

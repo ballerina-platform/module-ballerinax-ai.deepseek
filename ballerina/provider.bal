@@ -16,6 +16,7 @@
 
 import ballerina/ai;
 import ballerina/http;
+import ballerina/jballerina.java;
 import ballerina/time;
 
 const DEFAULT_DEEPSEEK_SERVICE_URL = "https://api.deepseek.com";
@@ -28,6 +29,7 @@ public isolated client class Provider {
     private final http:Client llmClient;
     private final int maxTokens;
     private final DEEPSEEK_MODEL_NAMES modelType;
+    private final string serviceUrl;
 
     # Initializes the Deepseek model client with the provided configurations.
     #
@@ -72,6 +74,7 @@ public isolated client class Provider {
 
         self.maxTokens = maxTokens;
         self.modelType = modelType;
+        self.serviceUrl = serviceUrl;
         self.llmClient = httpClient;
     }
 
@@ -113,6 +116,16 @@ public isolated client class Provider {
         return self.getAssistantMessages(response);
     }
 
+    # Sends a chat request to the model and generates a value that belongs to the type
+    # corresponding to the type descriptor argument.
+    # 
+    # + prompt - The prompt to use in the chat messages
+    # + td - Type descriptor specifying the expected return type format
+    # + return - Generates a value that belongs to the type, or an error if generation fails
+    isolated remote function generate(ai:Prompt prompt, typedesc<anydata> td = <>) returns td|ai:Error = @java:Method {
+        'class: "io.ballerina.lib.ai.deepseek.Generator"
+    } external;
+
     private isolated function transFormFuncToTool(DeepseekFunction deepseekFunction) returns DeepseekTool {
         DeepseekTool deepseekTool = {'function: deepseekFunction};
         return deepseekTool;
@@ -142,7 +155,7 @@ public isolated client class Provider {
             if message is DeepseekChatAssistantMessage && message.tool_calls is DeepseekChatResponseToolCall[] {
                 DeepseekChatResponseToolCall[]? tools = message.tool_calls;
                 if tools is () {
-                    return error ai:LlmError("No tool calls found in the assistant message");
+                    return error("No tool calls found in the assistant message");
                 }
                 if tools.length() > 0 {
                     return tools[0].id;
@@ -236,7 +249,7 @@ public isolated client class Provider {
             map<json>? arguments = check jsonArgs.cloneWithType();
             return {name: toolCall.'function.name, arguments, id: toolCall.id};
         } on fail error e {
-            return error ai:LlmError("Invalid or malformed arguments received in function call response.", e);
+            return error("Invalid or malformed arguments received in function call response.", e);
         }
     }
 }

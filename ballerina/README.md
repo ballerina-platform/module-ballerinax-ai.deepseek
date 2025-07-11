@@ -33,7 +33,7 @@ final ai:ModelProvider deepseekModel = check new deepseek:ModelProvider("deepsee
 
 ### Step 4: Invoke chat completion
 
-```
+```ballerina
 ai:ChatMessage[] chatMessages = [{role: "user", content: "hi"}];
 ai:ChatAssistantMessage response = check deepseekModel->chat(chatMessages, tools = []);
 

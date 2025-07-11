@@ -30,17 +30,17 @@ plugins {
     id "com.gradle.enterprise" version "3.2"
 }
 
-rootProject.name = 'module-ballerinax-ai.model.provider.deepseek'
+rootProject.name = 'module-ballerinax-ai.deepseek'
 
 include ':checkstyle'
-include ':ai.model.provider.deepseek-native'
-include ':ai.model.provider.deepseek-ballerina'
-include ':ai.model.provider.deepseek-compiler-plugin'
+include ':ai.deepseek-native'
+include ':ai.deepseek-ballerina'
+include ':ai.deepseek-compiler-plugin'
 
 project(':checkstyle').projectDir = file("build-config${File.separator}checkstyle")
-project(':ai.model.provider.deepseek-native').projectDir = file("native")
-project(':ai.model.provider.deepseek-ballerina').projectDir = file("ballerina")
-project(':ai.model.provider.deepseek-compiler-plugin').projectDir = file('compiler-plugin')
+project(':ai.deepseek-native').projectDir = file("native")
+project(':ai.deepseek-ballerina').projectDir = file("ballerina")
+project(':ai.deepseek-compiler-plugin').projectDir = file('compiler-plugin')
 
 gradleEnterprise {
     buildScan {

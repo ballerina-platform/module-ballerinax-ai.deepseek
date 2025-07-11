@@ -135,7 +135,7 @@ isolated function handleParseResponseError(error chatResponseError) returns erro
 }
 
 isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES modelType,
-        string serviceUrl, ai:Prompt prompt, typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
+        decimal temperature, ai:Prompt prompt, typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
     string content = check generateChatCreationContent(prompt);
     ResponseSchema ResponseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
     DeepseekTool[]|error tools = getGetResultsTool(ResponseSchema.schema);
@@ -152,6 +152,7 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
         messages,
         model: modelType,
         max_tokens: maxTokens,
+        temperature,
         tools,
         toolChoice: getGetResultsToolChoice()
     };

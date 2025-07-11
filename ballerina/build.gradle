@@ -24,7 +24,7 @@ plugins{
 
 description = 'Deepseek Model Provider - Ballerina'
 
-def packageName = "ai.model.provider.deepseek"
+def packageName = "ai.deepseek"
 def packageOrg = "ballerinax"
 def tomlVersion = stripBallerinaExtensionVersion("${project.version}")
 def ballerinaTomlFilePlaceHolder = new File("${project.rootDir}/build-config/resources/Ballerina.toml")
@@ -103,7 +103,7 @@ clean {
 }
 
 build.dependsOn "generatePomFileForMavenPublication"
-build.dependsOn ':ai.model.provider.deepseek-native:build'
-build.dependsOn ":ai.model.provider.deepseek-compiler-plugin:build"
+build.dependsOn ':ai.deepseek-native:build'
+build.dependsOn ":ai.deepseek-compiler-plugin:build"
 publishToMavenLocal.dependsOn build
 publish.dependsOn build

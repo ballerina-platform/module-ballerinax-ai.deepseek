@@ -22,6 +22,7 @@ service /llm on new http:Listener(8080) {
                 DeepSeekChatCompletionRequest payload) returns DeepSeekChatCompletionResponse|error {
         test:assertEquals(payload.model, DEEPSEEK_CHAT);
         test:assertEquals(payload.max_tokens, DEFAULT_MAX_TOKEN_COUNT);
+        test:assertEquals(payload.temperature, DEFAULT_TEMPERATURE);
         DeepSeekChatRequestMessages[] messages = payload.messages;
         DeepseekChatUserMessage message = check messages[0].ensureType();
 

@@ -22,7 +22,7 @@ const API_KEY = "not-a-real-api-key";
 const ERROR_MESSAGE = "Error occurred while attempting to parse the response from the LLM as the expected type. Retrying and/or validating the prompt could fix the response.";
 const RUNTIME_SCHEMA_NOT_SUPPORTED_ERROR_MESSAGE = "Runtime schema generation is not yet supported";
 
-final Provider deepseekProvider = check new (API_KEY, DEEPSEEK_CHAT, SERVICE_URL);
+final ModelProvider deepseekProvider = check new (API_KEY, DEEPSEEK_CHAT, SERVICE_URL);
 
 @test:Config
 function testGenerateMethodWithBasicReturnType() returns ai:Error? {

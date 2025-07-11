@@ -13,6 +13,6 @@ graalvmCompatible = true
 
 [[platform.java21.dependency]]
 groupId = "io.ballerina.lib"
-artifactId = "ai.model.provider.deepseek-native"
+artifactId = "ai.deepseek-native"
 version = "@toml.version@"
-path = "../native/build/libs/ai.model.provider.deepseek-native-@project.version@.jar"
+path = "../native/build/libs/ai.deepseek-native-@project.version@.jar"

@@ -23,11 +23,12 @@ const DEFAULT_MAX_TOKEN_COUNT = 512;
 const DEFAULT_TEMPERATURE = 0.7d;
 
 # Deepseek is a client class that provides an interface for interacting with Deepseek Large Language Models.
-public isolated client class Provider {
+public isolated client class ModelProvider {
     *ai:ModelProvider;
     private final http:Client llmClient;
     private final int maxTokens;
     private final DEEPSEEK_MODEL_NAMES modelType;
+    private final decimal temperature;
 
     # Initializes the Deepseek model client with the provided configurations.
     #
@@ -42,7 +43,7 @@ public isolated client class Provider {
             @display {label: "Model Type"} DEEPSEEK_MODEL_NAMES modelType = DEEPSEEK_CHAT,
             @display {label: "Service URL"} string serviceUrl = DEFAULT_DEEPSEEK_SERVICE_URL,
             @display {label: "Maximum Token"} int maxTokens = DEFAULT_MAX_TOKEN_COUNT,
-            @display {label: "Temperature"} decimal temperateure = DEFAULT_TEMPERATURE,
+            @display {label: "Temperature"} decimal temperature = DEFAULT_TEMPERATURE,
             @display {label: "Connection Configuration"} *ConnectionConfig connectionConfig
     ) returns ai:Error? {
 
@@ -73,19 +74,21 @@ public isolated client class Provider {
         self.maxTokens = maxTokens;
         self.modelType = modelType;
         self.llmClient = httpClient;
+        self.temperature = temperature;
     }
 
     # Generates a chat completion message from a Deepseek model
     #
-    # + messages - List of chat messages 
+    # + messages - List of chat messages or a user message
     # + tools - Tool definitions to be used for the tool call
     # + stop - Stop sequence to stop the completion
     # + return - Function to be called, chat response or an error in-case of failures
-    isolated remote function chat(ai:ChatMessage[] messages, ai:ChatCompletionFunctions[] tools, string? stop = ())
-    returns ai:ChatAssistantMessage|ai:LlmError {
+    isolated remote function chat(ai:ChatMessage[]|ai:ChatUserMessage messages, ai:ChatCompletionFunctions[] tools, string? stop = ())
+    returns ai:ChatAssistantMessage|ai:Error {
         DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.prepareDeepseekRequestMessages(messages);
 
         DeepSeekChatCompletionRequest request = {
+            temperature: self.temperature,
             messages: deepseekPayloadMessages,
             model: self.modelType,
             max_tokens: self.maxTokens,
@@ -95,10 +98,16 @@ public isolated client class Provider {
         if tools.length() > 0 {
             DeepseekFunction[] deepseekFunctions = [];
             foreach ai:ChatCompletionFunctions toolFunction in tools {
+                map<json>? parameters = toolFunction.parameters;
+                // Deepseek does not allow the NULL type when a function has no parameters,
+                // so avoid sending the schema in such cases.
+                if parameters is map<json> && parameters.'type == ai:NULL {
+                    parameters = ();
+                }
                 DeepseekFunction deepseekFunction = {
                     name: toolFunction.name,
                     description: toolFunction.description,
-                    parameters: toolFunction.parameters ?: {}
+                    parameters
                 };
                 deepseekFunctions.push(deepseekFunction);
             }
@@ -113,10 +122,8 @@ public isolated client class Provider {
         return self.getAssistantMessages(response);
     }
 
-    private isolated function transFormFuncToTool(DeepseekFunction deepseekFunction) returns DeepseekTool {
-        DeepseekTool deepseekTool = {'function: deepseekFunction};
-        return deepseekTool;
-    }
+    private isolated function transFormFuncToTool(DeepseekFunction deepseekFunction) returns DeepseekTool
+        => {'function: deepseekFunction};
 
     # Generates a random tool ID.
     #
@@ -153,26 +160,16 @@ public isolated client class Provider {
         return "";
     }
 
-    # Maps an array of `ai:ChatMessage` records to corresponding Mistral message records.
-    #
-    # + messages - Array of chat messages to be converted
-    # + return - An `ai:LlmError` or an array of Mistral message records
-    private isolated function prepareDeepseekRequestMessages(ai:ChatMessage[] messages)
-        returns DeepSeekChatRequestMessages[]|ai:LlmError {
+    private isolated function prepareDeepseekRequestMessages(ai:ChatMessage[]|ai:ChatUserMessage messages)
+        returns DeepSeekChatRequestMessages[]|ai:Error {
         DeepSeekChatRequestMessages[] deepseekMessages = [];
+        if messages is ai:ChatUserMessage {
+            deepseekMessages.push(check self.mapToDeepseekMessage(messages));
+            return deepseekMessages;
+        }
         foreach ai:ChatMessage message in messages {
-            if message is ai:ChatUserMessage {
-                DeepseekChatUserMessage deepseekUserMessage = {
-                    role: ai:USER,
-                    content: message.content
-                };
-                deepseekMessages.push(deepseekUserMessage);
-            } else if message is ai:ChatSystemMessage {
-                DeepseekChatSystemMessage deepseekSysteMessage = {
-                    role: ai:SYSTEM,
-                    content: message.content
-                };
-                deepseekMessages.push(deepseekSysteMessage);
+            if message is ai:ChatUserMessage|ai:ChatSystemMessage {
+                deepseekMessages.push(check self.mapToDeepseekMessage(message));
             } else if message is ai:ChatAssistantMessage {
                 ai:FunctionCall[]? toolCalls = message.toolCalls;
                 DeepseekChatAssistantMessage deepseekAssistantMessage = {role: ai:ASSISTANT, content: message.content};
@@ -186,14 +183,14 @@ public isolated client class Provider {
                         DeepseekChatResponseToolCall tool = {
                             'function: functionCall,
                             id: 'function.id ?: self.generateNewToolId(),
-                            'type: ai:FUNCTION
+                            'type: FUNCTION
                         };
                         toolCall.push(tool);
                     }
                     deepseekAssistantMessage.tool_calls = toolCall;
                 }
                 deepseekMessages.push(deepseekAssistantMessage);
-            } else if message is ai:ChatFunctionMessage {
+            } else {
                 DeepseekChatToolMessage deepseekToolMessage = {
                     role: TOOL_ROLE,
                     content: message?.content is string ? {result: message.content}.toJsonString() : "",
@@ -239,4 +236,65 @@ public isolated client class Provider {
             return error ai:LlmError("Invalid or malformed arguments received in function call response.", e);
         }
     }
+
+    private isolated function mapToDeepseekMessage(ai:ChatUserMessage|ai:ChatSystemMessage message)
+    returns DeepseekChatUserMessage|DeepseekChatSystemMessage|ai:Error {
+        if message is ai:ChatUserMessage {
+            DeepseekChatUserMessage userMessage = {
+                role: ai:USER,
+                content: check getChatMessageStringContent(message.content)
+            };
+            return userMessage;
+        }
+
+        DeepseekChatSystemMessage systemMessage = {
+            role: ai:SYSTEM,
+            content: check getChatMessageStringContent(message.content)
+        };
+        return systemMessage;
+    }
+
+    // TODO
+    isolated remote function generate(ai:Prompt prompt, typedesc<anydata> td = <>) returns td|ai:Error = external;
+}
+
+isolated function getChatMessageStringContent(ai:Prompt|string prompt) returns string|ai:Error {
+    if prompt is string {
+        return prompt;
+    }
+    string[] & readonly strings = prompt.strings;
+    anydata[] insertions = prompt.insertions;
+    string promptStr = strings[0];
+    foreach int i in 0 ..< insertions.length() {
+        string str = strings[i + 1];
+        anydata insertion = insertions[i];
+
+        if insertion is ai:TextDocument|ai:TextChunk {
+            promptStr += insertion.content + " " + str;
+            continue;
+        }
+
+        if insertion is ai:TextDocument[] {
+            foreach ai:TextDocument doc in insertion {
+                promptStr += doc.content + " ";
+            }
+            promptStr += str;
+            continue;
+        }
+
+        if insertion is ai:TextChunk[] {
+            foreach ai:TextChunk doc in insertion {
+                promptStr += doc.content + " ";
+            }
+            promptStr += str;
+            continue;
+        }
+
+        if insertion is ai:Document {
+            return error ai:Error("Only Text Documents are currently supported.");
+        }
+
+        promptStr += insertion.toString() + str;
+    }
+    return promptStr.trim();
 }

@@ -121,6 +121,7 @@ type DeepseekChatAssistantMessage record {
 };
 
 const TOOL_ROLE = "tool";
+const FUNCTION = "function";
 
 type DeepseekChatToolMessage record {|
     string content;
@@ -139,12 +140,19 @@ type DeepSeekChatRequestMessages DeepseekChatSystemMessage|DeepseekChatUserMessa
 type DeepseekFunction record {|
     string name;
     string description;
-    ai:JsonInputSchema parameters?;
+    map<json> parameters?;
 |};
 
 type DeepseekTool record {|
-    string 'type = ai:FUNCTION;
+    string 'type = FUNCTION;
     DeepseekFunction 'function;
+|};
+
+type DeepSeekToolChoice record {|
+    FUNCTION 'type?;
+    record {|
+        string name;
+    |} 'function?;
 |};
 
 type DeepSeekChatCompletionRequest record {|
@@ -152,6 +160,7 @@ type DeepSeekChatCompletionRequest record {|
     DEEPSEEK_MODEL_NAMES model;
     int? max_tokens;
     string?|string[]? stop = ();
-    int? temperature = 1;
+    decimal? temperature = 1;
     DeepseekTool[]? tools = ();
+    DeepSeekToolChoice? toolChoice = ();
 |};

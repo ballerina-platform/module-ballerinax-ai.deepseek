@@ -1,0 +1,9 @@
+[plugin]
+id = "ai-deepseek-compiler-plugin"
+class = "io.ballerina.lib.ai.deepseek.AiDeepseekCompilerPlugin"
+
+[[dependency]]
+path = "../compiler-plugin/build/libs/ai.deepseek-compiler-plugin-@project.version@.jar"
+
+[[dependency]]
+path = "../compiler-plugin/build/libs/ballerina-to-openapi-@ballerinaToOpenApiVersion.version@.jar"

@@ -15,4 +15,4 @@ graalvmCompatible = true
 groupId = "io.ballerina.lib"
 artifactId = "ai.deepseek-native"
 version = "1.0.1"
-path = "../native/build/libs/ai.deepseek-native-1.0.1-SNAPSHOT.jar"
+path = "../native/build/libs/ai.deepseek-native-1.0.1.jar"

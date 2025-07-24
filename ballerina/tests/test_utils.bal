@@ -288,7 +288,7 @@ isolated function getExpectedPrompt(string message) returns string {
         their name?`;
     }
 
-        if message.startsWith("Name 10 world class cricketers in India") {
+    if message.startsWith("Name 10 world class cricketers in India") {
         return "Name 10 world class cricketers in India";
     }
 

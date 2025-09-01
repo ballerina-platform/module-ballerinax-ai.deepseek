@@ -16,6 +16,7 @@
 
 import ballerina/ai;
 import ballerina/http;
+import ballerina/lang.runtime;
 
 type ResponseSchema record {|
     map<json> schema;
@@ -129,25 +130,27 @@ isolated function generateChatCreationContent(ai:Prompt prompt) returns string|a
 isolated function handleParseResponseError(error chatResponseError) returns error {
     string msg = chatResponseError.message();
     if msg.includes(JSON_CONVERSION_ERROR) || msg.includes(CONVERSION_ERROR) {
-        return error(string `${ERROR_MESSAGE}`, detail = chatResponseError);
+        return error(string `${ERROR_MESSAGE}`, chatResponseError);
     }
     return chatResponseError;
 }
 
 isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES modelType,
-        decimal temperature, ai:Prompt prompt, typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
+        decimal temperature, ai:GeneratorConfig generatorConfig, ai:Prompt prompt,
+        typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
+
     string content = check generateChatCreationContent(prompt);
-    ResponseSchema ResponseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
-    DeepseekTool[]|error tools = getGetResultsTool(ResponseSchema.schema);
+    ResponseSchema responseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
+    DeepseekTool[]|error tools = getGetResultsTool(responseSchema.schema);
     if tools is error {
         return error("Error in generated schema: " + tools.message());
     }
 
-
-    DeepseekChatUserMessage[] messages = [{
+    DeepSeekChatRequestMessages[] messages = [<DeepseekChatUserMessage>{
         role: ai:USER,
         content
     }];
+
     DeepSeekChatCompletionRequest request = {
         messages,
         model: modelType,
@@ -157,13 +160,23 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
         toolChoice: getGetResultsToolChoice()
     };
 
+    [int, decimal] [count, interval] = check getRetryConfigValues(generatorConfig);
+
+    return getLlmResponseWithRetries(llmClient, request, expectedResponseTypedesc, responseSchema.isOriginallyJsonObject,
+            count, interval);
+}
+
+isolated function getLlmResponseWithRetries(http:Client llmClient,
+        DeepSeekChatCompletionRequest request,
+        typedesc<anydata> expectedResponseTypedesc,
+        boolean isOriginallyJsonObject, int retryCount, decimal retryInterval) returns anydata|ai:Error {
+
     DeepSeekChatCompletionResponse|error response = llmClient->/chat/completions.post(request);
     if response is error {
         return error ai:LlmConnectionError("Error while connecting to the model", response);
     }
 
     DeepseekChatResponseChoice[]? choices = response.choices;
-
     if choices is () || choices.length() == 0 {
         return error("No completion choices");
     }
@@ -180,18 +193,75 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
         return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
     }
 
+    anydata|error result = handleResponseWithExpectedType(arguments, isOriginallyJsonObject, expectedResponseTypedesc);
+    DeepSeekChatRequestMessages[] history = request.messages;
+    history.push(message);
+
+    if result is error && retryCount > 0 {
+        string toolId = toolCall.id;
+        string functionName = toolCall.'function.name;
+        string|error repairMessage = getRepairMessage(result, toolId, functionName);
+
+        if repairMessage is error {
+            return error("Failed to generate a valid repair message: " + repairMessage.message());
+        }
+
+        history.push(<DeepseekChatUserMessage>{
+            role: ai:USER,
+            content: repairMessage
+        });
+
+        runtime:sleep(retryInterval);
+        return getLlmResponseWithRetries(llmClient, request, expectedResponseTypedesc, isOriginallyJsonObject,
+                retryCount - 1, retryInterval);
+    }
+
+    if result is anydata {
+        return result;
+    }
+
+    return error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
+            expectedResponseTypedesc.toBalString()}', found '${result.toBalString()}'`);
+}
+
+isolated function handleResponseWithExpectedType(map<json> arguments, boolean isOriginallyJsonObject,
+        typedesc<anydata> expectedResponseTypedesc) returns anydata|error {
     anydata|error res = parseResponseAsType(arguments.toJsonString(), expectedResponseTypedesc,
-            ResponseSchema.isOriginallyJsonObject);
+            isOriginallyJsonObject);
     if res is error {
-        return error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
-            expectedResponseTypedesc.toBalString()}', found '${res.toBalString()}'`);
+        return res;
     }
 
     anydata|error result = res.ensureType(expectedResponseTypedesc);
-
     if result is error {
-        return error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
-            expectedResponseTypedesc.toBalString()}', found '${(typeof response).toBalString()}'`);
+        return error(string `LLM response does not match the expected type '${expectedResponseTypedesc.toBalString()}'`, cause = result);
     }
     return result;
+}
+
+isolated function getRepairMessage(error e, string toolId, string functionName) returns string|error {
+    error? cause = e.cause();
+    string errorMessage = (cause is ()) ? e.message() : cause.toString();
+
+    return string `The tool call with ID '${toolId}' for the function '${functionName}' failed.
+        Error: ${errorMessage}
+        You must correct the function arguments based on this error and respond with a valid tool call.`;
+}
+
+isolated function getRetryConfigValues(ai:GeneratorConfig generatorConfig) returns [int, decimal]|ai:Error {
+    ai:RetryConfig? retryConfig = generatorConfig.retryConfig;
+    if retryConfig != () {
+        int count = retryConfig.count;
+        decimal? interval = retryConfig.interval;
+
+        if count < 0 {
+            return error("Invalid retry count: " + count.toString());
+        }
+        if interval < 0d {
+            return error("Invalid retry interval: " + interval.toString());
+        }
+
+        return [count, interval ?: 0d];
+    }
+    return [0, 0d];
 }

@@ -17,10 +17,3 @@ groupId = "io.ballerina.lib"
 artifactId = "ai.deepseek-native"
 version = "1.0.3"
 path = "../native/build/libs/ai.deepseek-native-1.0.3-SNAPSHOT.jar"
-
-
-[[dependency]]
-org="ballerina"
-name="ai"
-version="1.4.2"
-repository="local"

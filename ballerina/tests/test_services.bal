@@ -39,7 +39,7 @@ isolated service /llm on new http:Listener(8080) {
         }
 
         check assertDeepseekMessages(messages, initialContent, index);
-        return check getTestServiceResponse(initialContent, index);
+        return getTestServiceResponse(initialContent, index);
     }
 }
 

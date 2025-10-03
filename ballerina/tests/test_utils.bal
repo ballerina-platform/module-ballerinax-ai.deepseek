@@ -19,6 +19,14 @@ isolated function getExpectedParameterSchema(string message) returns map<json> {
         return expectedParameterSchemaStringForRateBlog6;
     }
 
+    if message.startsWith("On a scale from 1 to 10") {
+        return expectedParameterSchemaStringForRateBlog2;
+    }
+
+    if message.startsWith("What is the result of") {
+        return {"type": "object", "properties": {"result": {"type": "integer"}}};
+    }
+
     if message.startsWith("Rate this blog") {
         return expectedParameterSchemaStringForRateBlog;
     }
@@ -126,9 +134,25 @@ isolated function getExpectedParameterSchema(string message) returns map<json> {
     return {};
 }
 
-isolated function getTheMockLLMResult(string message) returns string {
+isolated function getInitialMockLlmResult(string message) returns string|error {
     if message.startsWith("Evaluate this") {
         return string `{"result": [9, 1]}`;
+    }
+
+    if message.startsWith("On a scale from 1 to 10") {
+        return review;
+    }
+
+    if message.startsWith("What is the result of 1 + 4?") {
+        return "{\"result\": 5}";
+    }
+
+    if message.startsWith("What is the result of 1 + 5?") {
+        return "{\"result\": 6}";
+    }
+
+    if message.startsWith("What is the result of") {
+        return "{\"result\": true}";
     }
 
     if message.startsWith("Rate this blog") {
@@ -184,7 +208,7 @@ isolated function getTheMockLLMResult(string message) returns string {
         return review;
     }
 
-        if message.startsWith("Name a random world class cricketer in India") {
+    if message.startsWith("Name a random world class cricketer in India") {
         return "{\"result\": {\"name\": \"Sanga\"}}";
     }
 
@@ -204,10 +228,11 @@ isolated function getTheMockLLMResult(string message) returns string {
         return "{\"result\": \"This is a random joke\"}";
     }
 
-    return "INVALID";
+    return error("Unexpected message for initial call");
 }
 
-isolated function getTestServiceResponse(string content) returns DeepSeekChatCompletionResponse =>
+isolated function getTestServiceResponse(string content, int retryCount = 0) 
+        returns DeepSeekChatCompletionResponse|error =>
     {
     id: "test-id",
     choices: [
@@ -220,7 +245,10 @@ isolated function getTestServiceResponse(string content) returns DeepSeekChatCom
                         'type: "function",
                         'function: {
                             name: GET_RESULTS_TOOL,
-                            arguments: getTheMockLLMResult(content)
+                            arguments: retryCount == 0 ?
+                                check getInitialMockLlmResult(content) : retryCount == 1 ? 
+                                    check getFirstRetryLlmResult(content) :
+                                    check getSecondRetryLlmResult(content)
                         }
                     }
                 ]
@@ -236,6 +264,34 @@ isolated function getExpectedPrompt(string message) returns string {
 
     if message.startsWith("Evaluate this") {
         return expectedPromptStringForRateBlog10;
+    }
+
+    if message.startsWith("On a scale from 1 to 10") {
+        return expectedPromptStringForRateBlog12;
+    }
+
+    if message.startsWith("What is the result of 1 + 1?") {
+        return "What is the result of 1 + 1?";
+    }
+
+    if message.startsWith("What is the result of 1 + 2?") {
+        return "What is the result of 1 + 2?";
+    }
+
+    if message.startsWith("What is the result of 1 + 3?") {
+        return "What is the result of 1 + 3?";
+    }
+
+    if message.startsWith("What is the result of 1 + 4?") {
+        return "What is the result of 1 + 4?";
+    }
+
+    if message.startsWith("What is the result of 1 + 5?") {
+        return "What is the result of 1 + 5?";
+    }
+
+    if message.startsWith("What is the result of 1 + 6?") {
+        return "What is the result of 1 + 6?";
     }
 
     if message.startsWith("Please rate this blogs") {
@@ -321,4 +377,64 @@ isolated function getExpectedPrompt(string message) returns string {
     }
 
     return "INVALID";
+}
+
+isolated function getFirstRetryLlmResult(string message) returns string|error {
+    if message.startsWith("What is the result of 1 + 1?") {
+        return "{\"result\": \"hi\"}";
+    }
+
+    if message.startsWith("What is the result of 1 + 2?") {
+        return "{\"result\": null}";
+    }
+
+    if message.startsWith("What is the result of 1 + 3?") {
+        return "{\"result\": 4}";
+    }
+
+    if message.startsWith("What is the result of 1 + 6?") {
+        return "{\"result\": 7}";
+    }
+
+    return error("Unexpected message for first retry call");
+}
+
+isolated function getSecondRetryLlmResult(string message) returns string|error {
+    if message.startsWith("What is the result of 1 + 1?") {
+        return "{\"result\": 2}";
+    }
+
+    if message.startsWith("What is the result of 1 + 2?") {
+        return "{\"result\": 3}";
+    }
+
+    return error("Unexpected message for second retry call");
+}
+
+isolated function generateConversionErrorMessage(string errorMessage) returns string =>
+    string `The tool call with ID 'tool-call-id' for the function 'getResults' failed.
+        Error: error("{ballerina/lang.value}ConversionError",message="${errorMessage}")
+        You must correct the function arguments based on this error and respond with a valid tool call.`;
+
+isolated function getExpectedPromptForFirstRetryCall(string message) returns string|error {
+    if message.startsWith("What is the result of 1 + 1?")
+        || message.startsWith("What is the result of 1 + 2?")
+        || message.startsWith("What is the result of 1 + 3?")
+        || message.startsWith("What is the result of 1 + 6?") {
+        return generateConversionErrorMessage("'boolean' value cannot be converted to 'int'");
+    }
+
+    return error("Unexpected content parts for first retry call");
+}
+
+isolated function getExpectedPromptForSecondRetryCall(string message) returns string|error {
+    if message.startsWith("What is the result of 1 + 1?") {
+        return generateConversionErrorMessage("'string' value cannot be converted to 'int'");
+    }
+
+    if message.startsWith("What is the result of 1 + 2?") {
+        return generateConversionErrorMessage("cannot convert '()' to type 'int'");
+    }
+
+    return error("Unexpected content parts for second retry call");
 }

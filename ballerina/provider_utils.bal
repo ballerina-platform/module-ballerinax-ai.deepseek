@@ -151,12 +151,6 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
     }
 
     DeepseekTool[] tools = getGetResultsTool(responseSchema.schema);
-    if tools is error {
-        ai:Error err = error("Error in generated schema: " + tools.message());
-        span.close(err);
-        return err;
-    }
-
     DeepseekChatUserMessage[] messages = [{role: ai:USER, content}];
     DeepSeekChatCompletionRequest request = {
         messages,

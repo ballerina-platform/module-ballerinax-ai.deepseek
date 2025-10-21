@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerina/ai;
+import ballerina/ai.observe;
 import ballerina/http;
 
 type ResponseSchema record {|
@@ -83,17 +84,17 @@ isolated function getGetResultsToolChoice() returns DeepSeekToolChoice => {
     }
 };
 
-isolated function getGetResultsTool(map<json> parameters) returns DeepseekTool[]|error  =>
+isolated function getGetResultsTool(map<json> parameters) returns DeepseekTool[] =>
     [
-        {
-            'type: FUNCTION,
-            'function: {
-                name: GET_RESULTS_TOOL,
-                parameters: parameters,
-                description: "Tool to call with the response from a large language model (LLM) for a user prompt."
-            }
+    {
+        'type: FUNCTION,
+        'function: {
+            name: GET_RESULTS_TOOL,
+            parameters: parameters,
+            description: "Tool to call with the response from a large language model (LLM) for a user prompt."
         }
-    ];
+    }
+];
 
 isolated function generateChatCreationContent(ai:Prompt prompt) returns string|ai:Error {
     string[] & readonly strings = prompt.strings;
@@ -110,8 +111,8 @@ isolated function generateChatCreationContent(ai:Prompt prompt) returns string|a
 
         if insertion is ai:TextDocument[] {
             foreach ai:TextDocument doc in insertion {
-                promptStr += doc.content  + " ";
-                
+                promptStr += doc.content + " ";
+
             }
             promptStr += str;
             continue;
@@ -136,18 +137,27 @@ isolated function handleParseResponseError(error chatResponseError) returns erro
 
 isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES modelType,
         decimal temperature, ai:Prompt prompt, typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
-    string content = check generateChatCreationContent(prompt);
-    ResponseSchema ResponseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
-    DeepseekTool[]|error tools = getGetResultsTool(ResponseSchema.schema);
-    if tools is error {
-        return error("Error in generated schema: " + tools.message());
+    observe:GenerateContentSpan span = observe:createGenerateContentSpan(modelType);
+    span.addProvider("deepseek");
+
+    string content;
+    ResponseSchema responseSchema;
+    do {
+        content = check generateChatCreationContent(prompt);
+        responseSchema = check getExpectedResponseSchema(expectedResponseTypedesc);
+    } on fail ai:Error err {
+        span.close(err);
+        return err;
     }
 
+    DeepseekTool[] tools = getGetResultsTool(responseSchema.schema);
+    if tools is error {
+        ai:Error err = error("Error in generated schema: " + tools.message());
+        span.close(err);
+        return err;
+    }
 
-    DeepseekChatUserMessage[] messages = [{
-        role: ai:USER,
-        content
-    }];
+    DeepseekChatUserMessage[] messages = [{role: ai:USER, content}];
     DeepSeekChatCompletionRequest request = {
         messages,
         model: modelType,
@@ -156,42 +166,67 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
         tools,
         toolChoice: getGetResultsToolChoice()
     };
+    span.addInputMessages(messages);
 
     DeepSeekChatCompletionResponse|error response = llmClient->/chat/completions.post(request);
     if response is error {
-        return error ai:LlmConnectionError("Error while connecting to the model", response);
+        ai:Error err = error ai:LlmConnectionError("Error while connecting to the model", response);
+        span.close(err);
+        return err;
+    }
+
+    span.addResponseId(response.id);
+    int? inputTokens = response.usage?.prompt_tokens;
+    if inputTokens is int {
+        span.addInputTokenCount(inputTokens);
+    }
+    int? outputTokens = response.usage?.completion_tokens;
+    if outputTokens is int {
+        span.addOutputTokenCount(outputTokens);
     }
 
     DeepseekChatResponseChoice[]? choices = response.choices;
-
     if choices is () || choices.length() == 0 {
-        return error("No completion choices");
+        ai:Error err = error("No completion choices");
+        span.close(err);
+        return err;
     }
 
     DeepseekChatResponseMessage message = choices[0].message;
     DeepseekChatResponseToolCall[]? toolCalls = message?.tool_calls;
-    if toolCalls is ()  || toolCalls.length() == 0 {
-        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+    if toolCalls is () || toolCalls.length() == 0 {
+        ai:Error err = error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+        span.close(err);
+        return err;
     }
 
     DeepseekChatResponseToolCall toolCall = toolCalls[0];
     map<json>|error arguments = toolCall.'function.arguments.fromJsonStringWithType();
     if arguments is error {
-        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+        ai:Error err = error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+        span.close(err);
+        return err;
     }
 
     anydata|error res = parseResponseAsType(arguments.toJsonString(), expectedResponseTypedesc,
-            ResponseSchema.isOriginallyJsonObject);
+            responseSchema.isOriginallyJsonObject);
     if res is error {
-        return error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
+        ai:Error err = error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
             expectedResponseTypedesc.toBalString()}', found '${res.toBalString()}'`);
+        span.close(err);
+        return err;
     }
 
     anydata|error result = res.ensureType(expectedResponseTypedesc);
-
     if result is error {
-        return error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
+        ai:Error err = error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
             expectedResponseTypedesc.toBalString()}', found '${(typeof response).toBalString()}'`);
+        span.close(err);
+        return err;
     }
+
+    span.addOutputMessages(result.toJson());
+    span.addOutputType(observe:JSON);
+    span.close();
     return result;
 }

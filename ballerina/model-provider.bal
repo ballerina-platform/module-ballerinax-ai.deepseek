@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerina/ai;
+import ballerina/ai.observe;
 import ballerina/http;
 import ballerina/jballerina.java;
 import ballerina/time;
@@ -86,7 +87,21 @@ public isolated client class ModelProvider {
     # + return - Function to be called, chat response or an error in-case of failures
     isolated remote function chat(ai:ChatMessage[]|ai:ChatUserMessage messages, ai:ChatCompletionFunctions[] tools, string? stop = ())
     returns ai:ChatAssistantMessage|ai:Error {
-        DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.prepareDeepseekRequestMessages(messages);
+        observe:ChatSpan span = observe:createChatSpan(self.modelType);
+        span.addProvider("deepseek");
+        if stop is string {
+            span.addStopSequence(stop);
+        }
+        span.addTemperature(self.temperature);
+        json|ai:Error inputMessage = convertMessageToJson(messages);
+        if inputMessage is json {
+            span.addInputMessages(inputMessage);
+        }
+        DeepSeekChatRequestMessages[]|ai:Error deepseekPayloadMessages = self.prepareDeepseekRequestMessages(messages);
+        if deepseekPayloadMessages is ai:Error {
+            span.close(deepseekPayloadMessages);
+            return deepseekPayloadMessages;
+        }
 
         DeepSeekChatCompletionRequest request = {
             temperature: self.temperature,
@@ -97,6 +112,7 @@ public isolated client class ModelProvider {
         };
 
         if tools.length() > 0 {
+            span.addTools(tools);
             DeepseekFunction[] deepseekFunctions = [];
             foreach ai:ChatCompletionFunctions toolFunction in tools {
                 map<json>? parameters = toolFunction.parameters;
@@ -118,18 +134,45 @@ public isolated client class ModelProvider {
 
         DeepSeekChatCompletionResponse|error response = self.llmClient->/chat/completions.post(request);
         if response is error {
-            return error ai:LlmConnectionError("Error while connecting to the model", response);
+            ai:Error err = error ai:LlmConnectionError("Error while connecting to the model", response);
+            span.close(err);
+            return err;
         }
-        return self.getAssistantMessages(response);
+        
+        span.addResponseId(response.id);
+        int? inputTokens = response.usage?.prompt_tokens;
+        if inputTokens is int {
+            span.addInputTokenCount(inputTokens);
+        }
+        int? outputTokens = response.usage?.completion_tokens;
+        if outputTokens is int {
+            span.addOutputTokenCount(outputTokens);
+        }
+
+        DeepseekChatResponseChoice[]? choices = response.choices;
+        string? finishReason = choices !is () && choices.length() > 0 ? choices[0].finish_reason : ();
+        if finishReason is string {
+            span.addFinishReason(finishReason);
+        }
+        ai:ChatAssistantMessage|ai:Error result = self.getAssistantMessages(response);
+        if result is ai:Error {
+            span.close(result);
+            return result;
+        }
+
+        span.addOutputMessages(result);
+        span.addOutputType(observe:TEXT);
+        span.close();
+        return result;
     }
 
     # Sends a chat request to the model and generates a value that belongs to the type
     # corresponding to the type descriptor argument.
-    # 
+    #
     # + prompt - The prompt to use in the chat messages
     # + td - Type descriptor specifying the expected return type format
     # + return - Generates a value that belongs to the type, or an error if generation fails
-    isolated remote function generate(ai:Prompt prompt, @display {label: "Expected type"}  typedesc<anydata> td = <>) 
+    isolated remote function generate(ai:Prompt prompt, @display {label: "Expected type"} typedesc<anydata> td = <>)
                 returns td|ai:Error = @java:Method {
         'class: "io.ballerina.lib.ai.deepseek.Generator"
     } external;
@@ -306,4 +349,15 @@ isolated function getChatMessageStringContent(ai:Prompt|string prompt) returns s
         promptStr += insertion.toString() + str;
     }
     return promptStr.trim();
+}
+
+isolated function convertMessageToJson(ai:ChatMessage[]|ai:ChatMessage messages) returns json|ai:Error {
+    if messages is ai:ChatMessage[] {
+        return messages.'map(msg => msg is ai:ChatUserMessage|ai:ChatSystemMessage ? check convertMessageToJson(msg) : msg);
+    }
+    if messages is ai:ChatUserMessage|ai:ChatSystemMessage {
+
+    }
+    return messages !is ai:ChatUserMessage|ai:ChatSystemMessage ? messages :
+        {role: messages.role, content: check getChatMessageStringContent(messages.content), name: messages.name};
 }

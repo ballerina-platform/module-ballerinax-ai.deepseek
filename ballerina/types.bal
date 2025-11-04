@@ -102,11 +102,19 @@ type DeepseekChatResponseMessage record {
 
 type DeepseekChatResponseChoice record {
     DeepseekChatResponseMessage message;
+    string finish_reason?;
 };
 
+// https://api-docs.deepseek.com/api/create-chat-completion#responses
 type DeepSeekChatCompletionResponse record {
     string id;
     DeepseekChatResponseChoice[] choices;
+    DeepSeekUsage usage?;
+};
+
+type DeepSeekUsage record {
+    int prompt_tokens;
+    int completion_tokens;
 };
 
 type DeepseekChatSystemMessage record {|

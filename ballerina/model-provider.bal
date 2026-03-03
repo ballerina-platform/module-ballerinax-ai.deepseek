@@ -85,8 +85,22 @@ public isolated client class ModelProvider {
     # + tools - Tool definitions to be used for the tool call
     # + stop - Stop sequence to stop the completion
     # + return - Function to be called, chat response or an error in-case of failures
-    isolated remote function chat(ai:ChatMessage[]|ai:ChatUserMessage messages, ai:ChatCompletionFunctions[] tools, string? stop = ())
+    isolated remote function chat(ai:ChatMessage[]|ai:ChatUserMessage messages,
+            (ai:ChatCompletionFunctions|ai:InbuiltModelTool)[] tools = [], string? stop = ())
     returns ai:ChatAssistantMessage|ai:Error {
+        string[] unsupportedTools = [];
+        ai:ChatCompletionFunctions[] functionTools = [];
+        foreach var tool in tools {
+            if tool is ai:InbuiltModelTool {
+                unsupportedTools.push(tool.name);
+            } else {
+                functionTools.push(tool);
+            }
+        }
+        if unsupportedTools.length() > 0 {
+            return error ai:Error(string `Inbuilt tools [${string:'join(", ", ...unsupportedTools)}] are not supported.`);
+        }
+
         observe:ChatSpan span = observe:createChatSpan(self.modelType);
         span.addProvider("deepseek");
         if stop is string {
@@ -111,10 +125,10 @@ public isolated client class ModelProvider {
             stop: stop
         };
 
-        if tools.length() > 0 {
-            span.addTools(tools);
+        if functionTools.length() > 0 {
+            span.addTools(functionTools);
             DeepseekFunction[] deepseekFunctions = [];
-            foreach ai:ChatCompletionFunctions toolFunction in tools {
+            foreach ai:ChatCompletionFunctions toolFunction in functionTools {
                 map<json>? parameters = toolFunction.parameters;
                 // Deepseek does not allow the NULL type when a function has no parameters,
                 // so avoid sending the schema in such cases.

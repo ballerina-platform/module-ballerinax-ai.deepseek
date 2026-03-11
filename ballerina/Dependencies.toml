@@ -135,6 +135,10 @@ dependencies = [
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "url"}
 ]
+modules = [
+	{org = "ballerina", packageName = "http", moduleName = "http"},
+	{org = "ballerina", packageName = "http", moduleName = "http.httpscerr"}
+]
 
 [[package]]
 org = "ballerina"
@@ -390,6 +394,7 @@ name = "ai.deepseek"
 version = "1.2.0"
 dependencies = [
 	{org = "ballerina", name = "ai"},
+	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "test"},
 	{org = "ballerina", name = "time"}

@@ -101,6 +101,15 @@ const expectedPromptStringForBalProgram = string `What's the output of the Balle
 
 const expectedPromptStringForCountry = string `Which country is known as the pearl of the Indian Ocean?`;
 
+final string expectedPromptStringForTextChunk =
+    string `Rate this text chunk out of 10. Title: ${blog1.title} Content: ${blog1.content} .`;
+
+final string expectedPromptStringForTextChunkArray =
+    string `Rate these text chunks out of 10. Title: ${blog1.title} Content: ${blog1.content} Title: ${blog1.title} Content: ${blog1.content} . Thank you!`;
+
+final string expectedPromptStringForMixedDocAndChunk =
+    string `Rate these mixed documents out of 10. Title: ${blog1.title} Content: ${blog1.content} Title: ${blog1.title} Content: ${blog1.content} . Thank you!`;
+
 const expectedParameterSchemaStringForRateBlog =
     {"type": "object", "properties": {"result": {"type": "integer"}}};
 

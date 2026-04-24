@@ -59,6 +59,18 @@ isolated function getExpectedParameterSchema(string message) returns map<json> {
         return expectedParameterSchemaStringForRateBlog2;
     }
 
+    if message.startsWith("Rate this text chunk") {
+        return expectedParameterSchemaStringForRateBlog;
+    }
+
+    if message.startsWith("Rate these text chunks") {
+        return expectedParameterSchemaStringForRateBlog6;
+    }
+
+    if message.startsWith("Rate these mixed documents") {
+        return expectedParameterSchemaStringForRateBlog6;
+    }
+
     if message.startsWith("What's the output of the Ballerina code below?") {
         return expectedParamterSchemaStringForBalProgram;
     }
@@ -184,6 +196,18 @@ isolated function getTheMockLLMResult(string message) returns string {
         return review;
     }
 
+    if message.startsWith("Rate this text chunk") {
+        return "{\"result\": 4}";
+    }
+
+    if message.startsWith("Rate these text chunks") {
+        return string `{"result": [9, 1]}`;
+    }
+
+    if message.startsWith("Rate these mixed documents") {
+        return string `{"result": [9, 1]}`;
+    }
+
         if message.startsWith("Name a random world class cricketer in India") {
         return "{\"result\": {\"name\": \"Sanga\"}}";
     }
@@ -260,6 +284,18 @@ isolated function getExpectedPrompt(string message) returns string {
 
     if message.startsWith("How do you rate this blog") {
         return expectedPromptStringForRateBlog11;
+    }
+
+    if message.startsWith("Rate this text chunk") {
+        return expectedPromptStringForTextChunk;
+    }
+
+    if message.startsWith("Rate these text chunks") {
+        return expectedPromptStringForTextChunkArray;
+    }
+
+    if message.startsWith("Rate these mixed documents") {
+        return expectedPromptStringForMixedDocAndChunk;
     }
 
     if message.startsWith("How would you rate this text blogs") {

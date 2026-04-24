@@ -104,27 +104,29 @@ isolated function generateChatCreationContent(ai:Prompt prompt) returns string|a
         string str = strings[i + 1];
         anydata insertion = insertions[i];
 
-        if insertion is ai:TextDocument {
-            promptStr += insertion.content + " " + str;
+        if insertion is ai:Document|ai:Chunk {
+            promptStr += check getDocumentContent(insertion) + " " + str;
             continue;
         }
 
-        if insertion is ai:TextDocument[] {
-            foreach ai:TextDocument doc in insertion {
-                promptStr += doc.content + " ";
-
+        if insertion is (ai:Document|ai:Chunk)[] {
+            foreach ai:Document|ai:Chunk doc in insertion {
+                promptStr += check getDocumentContent(doc) + " ";
             }
             promptStr += str;
             continue;
         }
 
-        if insertion is ai:Document {
-            return error ai:Error("Only Text Documents are currently supported.");
-        }
-
         promptStr += insertion.toString() + str;
     }
     return promptStr.trim();
+}
+
+isolated function getDocumentContent(ai:Document|ai:Chunk doc) returns string|ai:Error {
+    if doc is ai:TextDocument|ai:TextChunk {
+        return doc.content;
+    }
+    return error("Only text and image documents are supported.");
 }
 
 isolated function handleParseResponseError(error chatResponseError) returns error {

@@ -25,6 +25,7 @@ const DEFAULT_MAX_TOKEN_COUNT = 512;
 const DEFAULT_TEMPERATURE = 0.7d;
 
 # Deepseek is a client class that provides an interface for interacting with Deepseek Large Language Models.
+@display { label: "DeepSeek Model Provider" }
 public isolated client class ModelProvider {
     *ai:ModelProvider;
     private final http:Client llmClient;

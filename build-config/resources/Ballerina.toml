@@ -9,6 +9,12 @@ org = "ballerinax"
 repository = "https://github.com/ballerina-platform/module-ballerinax-ai.deepseek"
 version = "@toml.version@"
 
+[[dependency]]
+org = "ballerina"
+name = "ai"
+version = "1.11.3"
+repository = "local"
+
 [platform.java21]
 graalvmCompatible = true
 

@@ -152,8 +152,8 @@ type DeepSeekChatCompletionChunk record {
     string system_fingerprint;
     # Choices in this chunk; empty in the final usage-only chunk
     DeepSeekChatChunkChoice[] choices;
-    # Token usage, present only in the final chunk when stream_options.include_usage is set
-    DeepSeekUsage usage?;
+    # Token usage; explicitly null on all but the final chunk when stream_options.include_usage is set
+    DeepSeekUsage? usage = ();
 };
 
 # A single choice within a streamed chunk

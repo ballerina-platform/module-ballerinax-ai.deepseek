@@ -6,7 +6,7 @@
 
 ## Overview
 
-This module provides a generic API for connecting with Deepseek's LLM chat completion models.
+This module provides a generic API for connecting with Deepseek's LLM chat completion models, including streaming responses.
 
 ## Issues and projects
 

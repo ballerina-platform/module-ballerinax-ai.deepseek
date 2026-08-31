@@ -94,11 +94,14 @@ type DeepseekChatResponseToolCall record {
     DeepseekChatResponseFunction 'function;
 };
 
+// The `deepseek-reasoner` model also returns a `reasoning_content` field here, but it is
+// deliberately not mapped: `ai:ChatAssistantMessage` is a closed record with nowhere to
+// carry it, so `chat` cannot surface it. Reasoning reaches callers only on the streaming
+// path, where `ai:ChatCompletionChunkDelta` has a `reasoning` field - see
+// `DeepSeekChatChunkDelta`.
 type DeepseekChatResponseMessage record {
     string role;
     string? content = ();
-    # Chain-of-thought reasoning produced by the deepseek-reasoner model, if any
-    string? reasoning_content = ();
     DeepseekChatResponseToolCall[]? tool_calls = ();
 };
 
@@ -139,17 +142,24 @@ type DeepSeekCompletionTokensDetails record {
 // emitted by the `deepseek-reasoner` model (chain-of-thought before the answer).
 
 # A streamed chunk of a chat completion response (object: "chat.completion.chunk")
+#
+# Only `choices` is required. `serviceUrl` is configurable, so the stream can come from
+# any OpenAI-compatible endpoint, and those differ in which envelope fields they send -
+# `system_fingerprint` in particular is `null` or absent on several of them. Requiring a
+# field the mapping never reads would fail `cloneWithType` and turn the whole response
+# into a stream error, so everything optional on the wire stays optional here.
 type DeepSeekChatCompletionChunk record {
     # Unique identifier for the completion, shared across all chunks
-    string id;
+    string id?;
     # Object type, always "chat.completion.chunk"
-    string 'object;
+    string 'object?;
     # Unix timestamp (seconds) when the completion was created
-    int created;
+    int created?;
     # The model used (e.g., "deepseek-chat", "deepseek-reasoner")
-    string model;
-    # Fingerprint of the backend configuration the model runs with
-    string system_fingerprint;
+    string model?;
+    # Fingerprint of the backend configuration the model runs with; absent or
+    # explicitly null on some OpenAI-compatible endpoints
+    string? system_fingerprint = ();
     # Choices in this chunk; empty in the final usage-only chunk
     DeepSeekChatChunkChoice[] choices;
     # Token usage; explicitly null on all but the final chunk when stream_options.include_usage is set
@@ -349,7 +359,15 @@ isolated function toAiChunk(DeepSeekChatCompletionChunk w) returns ai:ChatComple
         choices.push({index: c.index, delta, finishReason: mapFinishReason(c.finish_reason)});
     }
 
-    ai:ChatCompletionChunk chunk = {id: w.id, model: w.model, choices};
+    ai:ChatCompletionChunk chunk = {choices};
+    string? id = w?.id;
+    if id is string {
+        chunk.id = id;
+    }
+    string? model = w?.model;
+    if model is string {
+        chunk.model = model;
+    }
     DeepSeekUsage? usage = w.usage;
     if usage is DeepSeekUsage {
         ai:CompletionTokenUsage tokenUsage = {
@@ -363,6 +381,29 @@ isolated function toAiChunk(DeepSeekChatCompletionChunk w) returns ai:ChatComple
         chunk.usage = tokenUsage;
     }
     return chunk;
+}
+
+# Extracts the message from a DeepSeek `{"error": {...}}` frame, which the API emits both
+# as the body of a non-2xx streaming response and mid-stream when a generation is cut
+# short (a rate limit tripped part-way, for example).
+#
+# + payload - The parsed JSON payload of a response body or one SSE frame
+# + return - The error message, or `()` when the payload is not an error frame
+isolated function extractStreamErrorFrame(json payload) returns string? {
+    if payload !is map<json> {
+        return ();
+    }
+    json? failure = payload["error"];
+    if failure is () {
+        return ();
+    }
+    if failure is map<json> {
+        json? message = failure["message"];
+        if message is string {
+            return message;
+        }
+    }
+    return failure.toJsonString();
 }
 
 # Safely maps a DeepSeek role string onto the `ai:ROLE` enum; returns `()` for

@@ -113,23 +113,7 @@ public isolated client class ModelProvider {
 
         if tools.length() > 0 {
             span.addTools(tools);
-            DeepseekFunction[] deepseekFunctions = [];
-            foreach ai:ChatCompletionFunctions toolFunction in tools {
-                map<json>? parameters = toolFunction.parameters;
-                // Deepseek does not allow the NULL type when a function has no parameters,
-                // so avoid sending the schema in such cases.
-                if parameters is map<json> && parameters.'type == ai:NULL {
-                    parameters = ();
-                }
-                DeepseekFunction deepseekFunction = {
-                    name: toolFunction.name,
-                    description: toolFunction.description,
-                    parameters
-                };
-                deepseekFunctions.push(deepseekFunction);
-            }
-            DeepseekTool[] deepseekTools = deepseekFunctions.'map(self.transFormFuncToTool);
-            request.tools = deepseekTools;
+            request.tools = self.buildDeepseekTools(tools);
         }
 
         DeepSeekChatCompletionResponse|error response = self.llmClient->/chat/completions.post(request);
@@ -183,10 +167,25 @@ public isolated client class ModelProvider {
     # + tools - Tool definitions to be used for the tool call
     # + stop - Stop sequence to stop the completion
     # + return - A stream of chat completion chunks, or an error in case of failures
-    remote function chatStream(ai:ChatMessage[]|ai:ChatUserMessage messages,
+    isolated remote function chatStream(ai:ChatMessage[]|ai:ChatUserMessage messages,
             ai:ChatCompletionFunctions[] tools = [], string? stop = ())
             returns stream<ai:ChatCompletionChunk, ai:Error?>|ai:Error {
-        DeepSeekChatRequestMessages[] deepseekPayloadMessages = check self.prepareDeepseekRequestMessages(messages);
+        observe:ChatSpan span = observe:createChatSpan(self.modelType);
+        span.addProvider("deepseek");
+        if stop is string {
+            span.addStopSequence(stop);
+        }
+        span.addTemperature(self.temperature);
+        json|ai:Error inputMessage = convertMessageToJson(messages);
+        if inputMessage is json {
+            span.addInputMessages(inputMessage);
+        }
+
+        DeepSeekChatRequestMessages[]|ai:Error deepseekPayloadMessages = self.prepareDeepseekRequestMessages(messages);
+        if deepseekPayloadMessages is ai:Error {
+            span.close(deepseekPayloadMessages);
+            return deepseekPayloadMessages;
+        }
         DeepSeekChatCompletionRequest request = {
             temperature: self.temperature,
             messages: deepseekPayloadMessages,
@@ -198,37 +197,25 @@ public isolated client class ModelProvider {
         };
 
         if tools.length() > 0 {
-            DeepseekFunction[] deepseekFunctions = [];
-            foreach ai:ChatCompletionFunctions toolFunction in tools {
-                map<json>? parameters = toolFunction.parameters;
-                // Deepseek does not allow the NULL type when a function has no parameters,
-                // so avoid sending the schema in such cases.
-                if parameters is map<json> && parameters.'type == ai:NULL {
-                    parameters = ();
-                }
-                deepseekFunctions.push({
-                    name: toolFunction.name,
-                    description: toolFunction.description,
-                    parameters
-                });
-            }
-            request.tools = deepseekFunctions.'map(self.transFormFuncToTool);
+            span.addTools(tools);
+            request.tools = self.buildDeepseekTools(tools);
         }
 
-        http:Response|error response = self.llmClient->post("/chat/completions", request);
-        if response is error {
-            return error ai:LlmConnectionError("Error while connecting to the model for streaming", response);
+        stream<http:SseEvent, error?>|ai:Error sseStream = openSseStream(self.llmClient, "/chat/completions", request);
+        if sseStream is ai:Error {
+            span.close(sseStream);
+            return sseStream;
         }
-        stream<http:SseEvent, error?>|error sseStream = response.getSseEventStream();
-        if sseStream is error {
-            return error ai:Error("Failed to open the SSE stream from the model", sseStream);
-        }
-        stream<ai:ChatCompletionChunk, ai:Error?> chunkStream = new (new DeepSeekChunkIterator(sseStream));
+        stream<ai:ChatCompletionChunk, ai:Error?> chunkStream = new (new DeepSeekChunkIterator(sseStream, span));
         return chunkStream;
     }
 
     # Sends a streaming chat request to the model using the given prompt and streams
     # back the generated answer. Only `string` is supported as the expected type.
+    #
+    # Only the answer text is streamed. On `deepseek-reasoner` the chain-of-thought that
+    # precedes the answer is dropped; use `chatStream` and read `delta.reasoning` to
+    # observe it.
     #
     # + prompt - The prompt to use in the chat request
     # + td - The expected type of the streamed value; must be `string`
@@ -240,6 +227,29 @@ public isolated client class ModelProvider {
 
     private isolated function transFormFuncToTool(DeepseekFunction deepseekFunction) returns DeepseekTool
         => {'function: deepseekFunction};
+
+    # Converts the `ai` tool definitions into the Deepseek tool payload. Shared by `chat`
+    # and `chatStream` so both paths declare tools to the model in exactly the same way.
+    #
+    # + tools - The tool definitions to convert
+    # + return - The tools in the Deepseek request shape
+    private isolated function buildDeepseekTools(ai:ChatCompletionFunctions[] tools) returns DeepseekTool[] {
+        DeepseekFunction[] deepseekFunctions = [];
+        foreach ai:ChatCompletionFunctions toolFunction in tools {
+            map<json>? parameters = toolFunction.parameters;
+            // Deepseek does not allow the NULL type when a function has no parameters,
+            // so avoid sending the schema in such cases.
+            if parameters is map<json> && parameters.'type == ai:NULL {
+                parameters = ();
+            }
+            deepseekFunctions.push({
+                name: toolFunction.name,
+                description: toolFunction.description,
+                parameters
+            });
+        }
+        return deepseekFunctions.'map(self.transFormFuncToTool);
+    }
 
     # Generates a random tool ID.
     #
@@ -423,25 +433,93 @@ isolated function convertMessageToJson(ai:ChatMessage[]|ai:ChatMessage messages)
         {role: messages.role, content: check getChatMessageStringContent(messages.content), name: messages.name};
 }
 
+# Sends a streaming request and opens the Server-Sent Events stream it answers with.
+#
+# The POST binds to `http:Response` because the payload has to be read as an event stream
+# rather than data-bound, and that also switches off the client's status-code error
+# mapping - so the status is checked here. Without it DeepSeek's own message for an expired
+# key, an insufficient balance, or a rate limit is discarded, and `getSseEventStream` fails
+# the content-type check instead, telling the caller only that the stream could not be
+# opened.
+#
+# + llmClient - The HTTP client for the DeepSeek API
+# + path - The endpoint path to post to
+# + request - The request payload
+# + return - The SSE event stream, or an `ai:Error` describing the failure
+isolated function openSseStream(http:Client llmClient, string path, anydata request)
+        returns stream<http:SseEvent, error?>|ai:Error {
+    http:Response|error response = llmClient->post(path, request);
+    if response is error {
+        return error ai:LlmConnectionError("Error while connecting to the model for streaming", response);
+    }
+    int statusCode = response.statusCode;
+    if statusCode < 200 || statusCode >= 300 {
+        string? detail = extractHttpErrorDetail(response);
+        string message = detail is string
+            ? string `The model rejected the streaming request with status ${statusCode}: ${detail}`
+            : string `The model rejected the streaming request with status ${statusCode}`;
+        return error ai:LlmConnectionError(message);
+    }
+    stream<http:SseEvent, error?>|error sseStream = response.getSseEventStream();
+    if sseStream is error {
+        return error ai:LlmConnectionError("Failed to open the SSE stream from the model", sseStream);
+    }
+    return sseStream;
+}
+
+# Pulls the human-readable detail out of a non-2xx streaming response, which carries the
+# usual DeepSeek `{"error": {"message": ...}}` body rather than an event stream. Reading it
+# also drains the payload, so the connection is released back to the pool.
+#
+# + response - The non-2xx response
+# + return - The failure detail, or `()` when the body carries none
+isolated function extractHttpErrorDetail(http:Response response) returns string? {
+    json|error payload = response.getJsonPayload();
+    if payload is error {
+        string|error text = response.getTextPayload();
+        if text is string && text.trim() != "" {
+            return text.trim();
+        }
+        return ();
+    }
+    string? detail = extractStreamErrorFrame(payload);
+    if detail is string {
+        return detail;
+    }
+    return payload.toJsonString();
+}
+
 # Iterator that converts DeepSeek's Server-Sent Event stream into a stream of
 # normalized `ai:ChatCompletionChunk` values. Each `data:` line is parsed into the
-# DeepSeek wire chunk and mapped via `toAiChunk`; the terminating `[DONE]` sentinel,
-# blank lines, and unparseable keep-alive comments are skipped.
+# DeepSeek wire chunk and mapped via `toAiChunk`; the terminating `[DONE]` sentinel ends
+# the stream, and blank lines are skipped. The chat span is closed once the stream is
+# done, whether it ended cleanly, failed, or was closed by the caller.
+#
+# A frame that cannot be parsed is reported as an error rather than skipped: DeepSeek
+# emits `{"error": {...}}` mid-stream when a generation is cut short, and skipping it
+# would end the stream silently, handing the caller a truncated answer that looks
+# complete - or, if every frame is unparseable, an empty answer that looks successful.
 class DeepSeekChunkIterator {
     private stream<http:SseEvent, error?> sseStream;
+    private observe:ChatSpan span;
+    private boolean done = false;
 
-    isolated function init(stream<http:SseEvent, error?> sseStream) {
+    isolated function init(stream<http:SseEvent, error?> sseStream, observe:ChatSpan span) {
         self.sseStream = sseStream;
+        self.span = span;
     }
 
     public isolated function next() returns record {|ai:ChatCompletionChunk value;|}|ai:Error? {
+        if self.isDone() {
+            return ();
+        }
         while true {
             record {|http:SseEvent value;|}|error? event = self.sseStream.next();
             if event is () {
-                return ();
+                return self.finish();
             }
             if event is error {
-                return error ai:Error("Error while reading the model stream", event);
+                return self.failStream(error ai:LlmConnectionError("Error while reading the model stream", event));
             }
             string? data = event.value.data;
             if data is () {
@@ -452,26 +530,93 @@ class DeepSeekChunkIterator {
                 continue;
             }
             if trimmedData == "[DONE]" {
-                return ();
+                return self.finish();
             }
             json|error payload = trimmedData.fromJsonString();
             if payload is error {
-                continue;
+                return self.failStream(error ai:LlmInvalidResponseError(
+                        "Invalid or malformed chunk received from the model", payload));
+            }
+            string? errorMessage = extractStreamErrorFrame(payload);
+            if errorMessage is string {
+                return self.failStream(error ai:LlmError(
+                        string `Error received mid-stream from the model: ${errorMessage}`));
             }
             DeepSeekChatCompletionChunk|error wireChunk = payload.cloneWithType();
             if wireChunk is error {
-                continue;
+                return self.failStream(error ai:LlmInvalidResponseError(
+                        "Unexpected chunk shape received from the model", wireChunk));
             }
-            return {value: toAiChunk(wireChunk)};
+            ai:ChatCompletionChunk chunk = toAiChunk(wireChunk);
+            self.recordChunk(chunk);
+            return {value: chunk};
         }
     }
 
     public isolated function close() returns ai:Error? {
+        if !self.markDone() {
+            self.span.close();
+        }
         error? result = self.sseStream.close();
         if result is error {
-            return error ai:Error("Error while closing the model stream", result);
+            return error ai:LlmConnectionError("Error while closing the model stream", result);
         }
         return ();
+    }
+
+    // Records the finish reason and usage the span reports for the completed generation.
+    // Usage arrives on the final chunk, which `stream_options.include_usage` asks for.
+    private isolated function recordChunk(ai:ChatCompletionChunk chunk) {
+        ai:ChatCompletionChunkChoice[] choices = chunk.choices;
+        if choices.length() > 0 {
+            ai:FinishReason? finishReason = choices[0].finishReason;
+            if finishReason is ai:FinishReason {
+                self.span.addFinishReason(finishReason);
+                self.span.addOutputType(observe:TEXT);
+            }
+        }
+        ai:CompletionTokenUsage? usage = chunk?.usage;
+        if usage is ai:CompletionTokenUsage {
+            int? promptTokens = usage?.promptTokens;
+            if promptTokens is int {
+                self.span.addInputTokenCount(promptTokens);
+            }
+            int? completionTokens = usage?.completionTokens;
+            if completionTokens is int {
+                self.span.addOutputTokenCount(completionTokens);
+            }
+        }
+    }
+
+    // Ends the stream cleanly, closing the span exactly once.
+    private isolated function finish() returns () {
+        if !self.markDone() {
+            self.span.close();
+        }
+        return ();
+    }
+
+    // Ends the stream with an error, closing the span exactly once.
+    private isolated function failStream(ai:Error err) returns ai:Error {
+        if !self.markDone() {
+            self.span.close(err);
+        }
+        return err;
+    }
+
+    private isolated function isDone() returns boolean {
+        lock {
+            return self.done;
+        }
+    }
+
+    // Marks the stream as done, returning whether it was already marked before this call.
+    private isolated function markDone() returns boolean {
+        lock {
+            boolean wasDone = self.done;
+            self.done = true;
+            return wasDone;
+        }
     }
 }
 

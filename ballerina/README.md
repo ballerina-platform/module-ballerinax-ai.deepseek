@@ -1,8 +1,6 @@
 ## Overview
 
-DeepSeek provides high-performance large language models (LLMs) optimized for various natural language processing tasks.
-
-The DeepSeek connector offers APIs for connecting with DeepSeek Large Language Models (LLMs), enabling the integration of advanced conversational AI and language processing capabilities into applications.
+The `ai.deepseek` module provides a DeepSeek-backed `ModelProvider` implementation for the [`ballerina/ai`](https://central.ballerina.io/ballerina/ai/latest) agent framework. Use it to drive DeepSeek models (DeepSeek-V3, DeepSeek-Coder, and others) from Ballerina AI agents and other `ai`-module abstractions, rather than calling the DeepSeek REST API directly.
 
 ### Key Features
 

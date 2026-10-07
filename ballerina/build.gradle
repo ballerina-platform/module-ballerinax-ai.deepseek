@@ -112,6 +112,7 @@ clean {
 
 build.dependsOn "generatePomFileForMavenPublication"
 build.dependsOn ':ai.deepseek-native:build'
+test.dependsOn ':ai.deepseek-native:build'
 build.dependsOn ":ai.deepseek-compiler-plugin:build"
 publishToMavenLocal.dependsOn build
 publish.dependsOn build

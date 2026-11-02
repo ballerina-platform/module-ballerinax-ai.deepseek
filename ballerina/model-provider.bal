@@ -21,7 +21,7 @@ import ballerina/jballerina.java;
 import ballerina/time;
 
 const DEFAULT_DEEPSEEK_SERVICE_URL = "https://api.deepseek.com";
-const DEFAULT_MAX_TOKEN_COUNT = 512;
+const DEFAULT_MAX_TOKEN_COUNT = 4096;
 const DEFAULT_TEMPERATURE = 0.7d;
 
 # Deepseek is a client class that provides an interface for interacting with Deepseek Large Language Models.
@@ -138,7 +138,7 @@ public isolated client class ModelProvider {
             span.close(err);
             return err;
         }
-        
+
         span.addResponseId(response.id);
         int? inputTokens = response.usage?.prompt_tokens;
         if inputTokens is int {

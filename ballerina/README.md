@@ -7,7 +7,8 @@ The DeepSeek connector offers APIs for connecting with DeepSeek Large Language M
 ### Key Features
 
 - Connect and interact with DeepSeek Large Language Models (LLMs)
-- Support for DeepSeek-V3, DeepSeek-Coder, and other models
+- Support for the DeepSeek V4 models (`deepseek-flash` and `deepseek-v4-pro`), and any other model name supported by the DeepSeek API
+- Control over the thinking mode and the reasoning effort
 - Efficient handling of conversational prompts and completions
 - Secure communication with API key authentication
 
@@ -39,6 +40,15 @@ import ballerinax/ai.deepseek;
 
 final ai:ModelProvider deepseekModel = check new deepseek:ModelProvider("deepseekApiKey");
 ```
+
+The provider uses the `deepseek-flash` model by default. A different model, the thinking mode and the reasoning effort can be configured as follows:
+
+```ballerina
+final ai:ModelProvider deepseekModel = check new deepseek:ModelProvider("deepseekApiKey", deepseek:DEEPSEEK_V4_PRO,
+    thinking = deepseek:ENABLED, reasoningEffort = deepseek:HIGH);
+```
+
+> **Note:** The `deepseek-chat` and `deepseek-reasoner` models are deprecated, as DeepSeek discontinued these model names on July 24, 2026. Use `deepseek-flash` with `thinking` set to `deepseek:DISABLED` in place of `deepseek-chat`, and `deepseek-flash` in place of `deepseek-reasoner`.
 
 ### Step 4: Invoke chat completion
 

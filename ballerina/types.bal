@@ -18,7 +18,6 @@ import ballerina/ai;
 import ballerina/http;
 
 # Model types for DeepSeek.
-# Any other model name supported by the DeepSeek API can also be passed as a string.
 @display {label: "DeepSeek Model Names"}
 public enum DEEPSEEK_MODEL_NAMES {
     DEEPSEEK_FLASH = "deepseek-flash",
@@ -211,7 +210,7 @@ type DeepSeekResponseFormat record {|
 // https://api-docs.deepseek.com/api/create-chat-completion
 type DeepSeekChatCompletionRequest record {|
     DeepSeekChatRequestMessages[] messages;
-    DEEPSEEK_MODEL_NAMES|string model;
+    DEEPSEEK_MODEL_NAMES model;
     int? max_tokens;
     string?|string[]? stop = ();
     decimal? temperature = 1;

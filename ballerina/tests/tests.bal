@@ -298,13 +298,13 @@ function testChatWithDefaultConfigurations() returns error? {
 }
 
 @test:Config
-function testChatWithCustomModelNameAndThinkingConfigurations() returns error? {
-    ModelProvider provider = check new (API_KEY, "deepseek-v4-pro-0813", THINKING_SERVICE_URL, 8192,
+function testChatWithThinkingConfigurations() returns error? {
+    ModelProvider provider = check new (API_KEY, DEEPSEEK_V4_PRO, THINKING_SERVICE_URL, 8192,
         thinking = ENABLED, reasoningEffort = MAX);
     ai:ChatAssistantMessage response = check provider->chat([{role: ai:USER, content: "Hello"}], []);
     string content = check response.content.ensureType();
     map<json> configurations = check content.fromJsonStringWithType();
-    test:assertEquals(configurations["model"], "deepseek-v4-pro-0813");
+    test:assertEquals(configurations["model"], "deepseek-v4-pro");
     test:assertEquals(configurations["max_tokens"], 8192);
     test:assertEquals(configurations["thinking"], {"type": "enabled"});
     test:assertEquals(configurations["reasoning_effort"], "max");

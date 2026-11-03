@@ -32,7 +32,7 @@ public isolated client class ModelProvider {
     *ai:ModelProvider;
     private final http:Client llmClient;
     private final int maxTokens;
-    private final DEEPSEEK_MODEL_NAMES|string modelType;
+    private final DEEPSEEK_MODEL_NAMES modelType;
     private final decimal temperature;
     private final Thinking? thinking;
     private final ReasoningEffort? reasoningEffort;
@@ -52,7 +52,7 @@ public isolated client class ModelProvider {
     # + connectionConfig - Additional HTTP client configurations
     # + return - `nil` on successful initialization; otherwise, returns an `ai:Error`
     public isolated function init(@display {label: "API Key"} string apiKey,
-            @display {label: "Model Type"} DEEPSEEK_MODEL_NAMES|string modelType = DEEPSEEK_FLASH,
+            @display {label: "Model Type"} DEEPSEEK_MODEL_NAMES modelType = DEEPSEEK_FLASH,
             @display {label: "Service URL"} string serviceUrl = DEFAULT_DEEPSEEK_SERVICE_URL,
             @display {label: "Maximum Token"} int maxTokens = DEFAULT_MAX_TOKEN_COUNT,
             @display {label: "Temperature"} decimal temperature = DEFAULT_TEMPERATURE,

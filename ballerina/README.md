@@ -7,7 +7,7 @@ The DeepSeek connector offers APIs for connecting with DeepSeek Large Language M
 ### Key Features
 
 - Connect and interact with DeepSeek Large Language Models (LLMs)
-- Support for the DeepSeek V4 models (`deepseek-flash` and `deepseek-v4-pro`), and any other model name supported by the DeepSeek API
+- Support for the DeepSeek V4 models (`deepseek-flash` and `deepseek-v4-pro`)
 - Control over the thinking mode and the reasoning effort
 - Efficient handling of conversational prompts and completions
 - Secure communication with API key authentication

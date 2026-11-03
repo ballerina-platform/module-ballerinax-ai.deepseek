@@ -156,7 +156,7 @@ isolated function addThinkingConfig(DeepSeekChatCompletionRequest request, Think
 # + thinking - Enables or disables the thinking mode
 # + reasoningEffort - The reasoning effort in thinking mode
 # + return - `true` if the request is served in thinking mode, `false` otherwise
-isolated function isThinkingEnabled(DEEPSEEK_MODEL_NAMES|string modelType, Thinking? thinking,
+isolated function isThinkingEnabled(DEEPSEEK_MODEL_NAMES modelType, Thinking? thinking,
         ReasoningEffort? reasoningEffort) returns boolean {
     if thinking is Thinking {
         return thinking == ENABLED;
@@ -172,7 +172,7 @@ isolated function getJsonOutputInstruction(map<json> schema) returns string =>
 JSON schema:
 ${schema.toJsonString()}`;
 
-isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES|string modelType,
+isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES modelType,
         decimal temperature, Thinking? thinking, ReasoningEffort? reasoningEffort, ai:Prompt prompt,
         typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
     observe:GenerateContentSpan span = observe:createGenerateContentSpan(modelType);

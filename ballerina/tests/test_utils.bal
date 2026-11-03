@@ -14,6 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/test;
+
 isolated function getExpectedParameterSchema(string message) returns map<json> {
     if message.startsWith("Evaluate this") {
         return expectedParameterSchemaStringForRateBlog6;
@@ -345,4 +347,80 @@ isolated function getExpectedPrompt(string message) returns json {
     }
 
     return "INVALID";
+}
+
+isolated function getMockChatResponse(string? content, string? reasoningContent, json[]? toolCalls = ()) returns json =>
+    {
+    id: "test-id",
+    choices: [
+        {
+            message: {
+                role: "assistant",
+                content,
+                reasoning_content: reasoningContent,
+                tool_calls: toolCalls
+            },
+            finish_reason: toolCalls is () ? "stop" : "tool_calls"
+        }
+    ],
+    usage: {prompt_tokens: 10, completion_tokens: 20}
+};
+
+isolated function getJsonOutputModeResponse(map<json> payload, json[] messages) returns json|error {
+    test:assertEquals(payload["response_format"], {"type": "json_object"});
+    test:assertFalse(payload.hasKey("tool_choice"), "Thinking mode does not support named tool choices");
+    test:assertEquals(payload["tools"], ());
+    test:assertEquals(messages.length(), 2);
+
+    map<json> systemMessage = check messages[0].ensureType();
+    map<json> userMessage = check messages[1].ensureType();
+    test:assertEquals(systemMessage["role"], "system");
+    test:assertEquals(userMessage["role"], "user");
+
+    string content = check userMessage["content"].ensureType();
+    test:assertEquals(content, getExpectedPrompt(content));
+    string instruction = check systemMessage["content"].ensureType();
+    int? schemaIndex = instruction.indexOf(JSON_SCHEMA_LABEL);
+    if schemaIndex is () {
+        test:assertFail("Expected the JSON schema in the system message");
+    }
+    json schema = check instruction.substring(schemaIndex + JSON_SCHEMA_LABEL.length()).fromJsonString();
+    test:assertEquals(schema, getExpectedParameterSchema(content), string `Test failed for prompt:- ${content}`);
+    return getMockChatResponse(getTheMockLLMResult(content), "Reasoning about the response.");
+}
+
+isolated function getToolLoopResponse(map<json> payload, json[] messages) returns json|error {
+    test:assertEquals(payload["model"], DEEPSEEK_FLASH);
+    test:assertEquals(payload["max_tokens"], DEFAULT_MAX_TOKEN_COUNT);
+    test:assertEquals(payload["thinking"], {"type": "enabled"});
+    test:assertEquals(payload["reasoning_effort"], "high");
+    test:assertFalse(payload.hasKey("tool_choice"));
+    json[] tools = check payload["tools"].ensureType();
+    test:assertEquals(tools.length(), 2);
+
+    // Thinking mode requires the `reasoning_content` of every previous assistant turn when tools are present.
+    string[] reasoningContents = [];
+    foreach json message in messages {
+        map<json> chatMessage = check message.ensureType();
+        if chatMessage["role"] == "assistant" {
+            test:assertTrue(chatMessage.hasKey("reasoning_content"),
+                    string `Missing reasoning_content in the assistant message: ${chatMessage.toJsonString()}`);
+            string reasoningContent = check chatMessage["reasoning_content"].ensureType();
+            reasoningContents.push(reasoningContent);
+        }
+    }
+
+    map<json> lastMessage = check messages[messages.length() - 1].ensureType();
+    if reasoningContents.length() == 0 {
+        return getMockChatResponse("", TOOL_CALL_REASONING, [
+            {id: "call_weather", 'type: "function", 'function: {name: "getWeather", arguments: "{\"city\": \"Colombo\"}"}},
+            {id: "call_time", 'type: "function", 'function: {name: "getTime", arguments: "{\"city\": \"Colombo\"}"}}
+        ]);
+    }
+    if lastMessage["role"] == "tool" {
+        test:assertEquals(reasoningContents, [TOOL_CALL_REASONING, TOOL_CALL_REASONING]);
+        return getMockChatResponse(WEATHER_ANSWER, WEATHER_ANSWER_REASONING);
+    }
+    test:assertEquals(reasoningContents, [TOOL_CALL_REASONING, TOOL_CALL_REASONING, WEATHER_ANSWER_REASONING]);
+    return getMockChatResponse(FORECAST_ANSWER, "The user asks about tomorrow.");
 }

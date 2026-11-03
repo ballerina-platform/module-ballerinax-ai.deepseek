@@ -17,9 +17,40 @@
 import ballerina/ai;
 import ballerina/http;
 
+# Model types for DeepSeek.
+@display {label: "DeepSeek Model Names"}
 public enum DEEPSEEK_MODEL_NAMES {
+    DEEPSEEK_FLASH = "deepseek-flash",
+    DEEPSEEK_V4_PRO = "deepseek-v4-pro",
+    # # Deprecated
+    # Legacy name for the non-thinking mode of DeepSeek V4 Flash, discontinued by DeepSeek on July 24, 2026.
+    # Use `DEEPSEEK_FLASH` with `thinking` set to `DISABLED` instead.
+    # See https://api-docs.deepseek.com/updates
+    @deprecated
     DEEPSEEK_CHAT = "deepseek-chat",
+    # # Deprecated
+    # Legacy name for the thinking mode of DeepSeek V4 Flash, discontinued by DeepSeek on July 24, 2026.
+    # Use `DEEPSEEK_FLASH` instead.
+    # See https://api-docs.deepseek.com/updates
+    @deprecated
     DEEPSEEK_REASONER = "deepseek-reasoner"
+}
+
+# Thinking mode of the DeepSeek model.
+# When not set, the model's default applies; the DeepSeek V4 models run in thinking mode by default.
+@display {label: "Thinking"}
+public enum Thinking {
+    ENABLED = "enabled",
+    DISABLED = "disabled"
+}
+
+# Reasoning effort of the DeepSeek model in thinking mode. `NONE` disables thinking mode.
+@display {label: "Reasoning Effort"}
+public enum ReasoningEffort {
+    NONE = "none",
+    LOW = "low",
+    HIGH = "high",
+    MAX = "max"
 }
 
 # Configurations for controlling the behaviours when communicating with a remote HTTP endpoint.
@@ -97,6 +128,7 @@ type DeepseekChatResponseToolCall record {
 type DeepseekChatResponseMessage record {
     string role;
     string? content = ();
+    string? reasoning_content = ();
     DeepseekChatResponseToolCall[]? tool_calls = ();
 };
 
@@ -125,6 +157,8 @@ type DeepseekChatSystemMessage record {|
 type DeepseekChatAssistantMessage record {
     string? content = ();
     string role = "assistant";
+    // Must be sent back for every assistant turn when the request carries tools in thinking mode.
+    string reasoning_content?;
     DeepseekChatResponseToolCall[]? tool_calls = ();
 };
 
@@ -163,6 +197,17 @@ type DeepSeekToolChoice record {|
     |} 'function?;
 |};
 
+type DeepSeekThinking record {|
+    Thinking 'type;
+|};
+
+const JSON_OBJECT = "json_object";
+
+type DeepSeekResponseFormat record {|
+    "text"|JSON_OBJECT 'type;
+|};
+
+// https://api-docs.deepseek.com/api/create-chat-completion
 type DeepSeekChatCompletionRequest record {|
     DeepSeekChatRequestMessages[] messages;
     DEEPSEEK_MODEL_NAMES model;
@@ -170,5 +215,8 @@ type DeepSeekChatCompletionRequest record {|
     string?|string[]? stop = ();
     decimal? temperature = 1;
     DeepseekTool[]? tools = ();
-    DeepSeekToolChoice? toolChoice = ();
+    DeepSeekToolChoice tool_choice?;
+    DeepSeekThinking thinking?;
+    ReasoningEffort reasoning_effort?;
+    DeepSeekResponseFormat response_format?;
 |};

@@ -20,9 +20,12 @@ import ballerina/test;
 service /llm on new http:Listener(8080) {
     resource function post deepseek/chat/completions(
                 DeepSeekChatCompletionRequest payload) returns DeepSeekChatCompletionResponse|error {
-        test:assertEquals(payload.model, DEEPSEEK_CHAT);
+        test:assertEquals(payload.model, DEEPSEEK_V4_PRO);
         test:assertEquals(payload.max_tokens, DEFAULT_MAX_TOKEN_COUNT);
         test:assertEquals(payload.temperature, DEFAULT_TEMPERATURE);
+        test:assertEquals(payload?.thinking, {'type: DISABLED});
+        test:assertEquals(payload?.tool_choice, {'type: FUNCTION, 'function: {name: GET_RESULTS_TOOL}});
+        test:assertEquals(payload?.response_format, ());
         DeepSeekChatRequestMessages[] messages = payload.messages;
         DeepseekChatUserMessage message = check messages[0].ensureType();
 
@@ -45,5 +48,26 @@ service /llm on new http:Listener(8080) {
 
         test:assertEquals(parameters, getExpectedParameterSchema(content), string `Test failed for prompt:- ${content}`);
         return getTestServiceResponse(content);
+    }
+
+    resource function post thinking/chat/completions(map<json> payload) returns json|error {
+        test:assertFalse(payload.hasKey("toolChoice"), "Tool choice should be sent as `tool_choice`");
+        json[] messages = check payload["messages"].ensureType();
+        map<json> firstMessage = check messages[0].ensureType();
+        if payload.hasKey("response_format") {
+            return getJsonOutputModeResponse(payload, messages);
+        }
+        if firstMessage["content"] == WEATHER_QUERY {
+            return getToolLoopResponse(payload, messages);
+        }
+        // Echo the request configurations, so that the tests can verify them.
+        json configurations = {
+            model: payload["model"],
+            max_tokens: payload["max_tokens"],
+            thinking: payload["thinking"],
+            reasoning_effort: payload["reasoning_effort"],
+            keys: payload.keys()
+        };
+        return getMockChatResponse(configurations.toJsonString(), ());
     }
 }

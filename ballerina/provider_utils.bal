@@ -134,8 +134,47 @@ isolated function handleParseResponseError(error chatResponseError) returns erro
     return chatResponseError;
 }
 
+# Adds the thinking mode configurations to the request, when they are set.
+#
+# + request - The chat completion request
+# + thinking - Enables or disables the thinking mode
+# + reasoningEffort - The reasoning effort in thinking mode
+isolated function addThinkingConfig(DeepSeekChatCompletionRequest request, Thinking? thinking,
+        ReasoningEffort? reasoningEffort) {
+    if thinking is Thinking {
+        request.thinking = {'type: thinking};
+    }
+    if reasoningEffort is ReasoningEffort {
+        request.reasoning_effort = reasoningEffort;
+    }
+}
+
+# Checks whether a request is served in thinking mode. The `thinking` configuration takes precedence over
+# `reasoningEffort`. When neither selects the mode, only the legacy `deepseek-chat` model runs without thinking.
+#
+# + modelType - The DeepSeek model name
+# + thinking - Enables or disables the thinking mode
+# + reasoningEffort - The reasoning effort in thinking mode
+# + return - `true` if the request is served in thinking mode, `false` otherwise
+isolated function isThinkingEnabled(DEEPSEEK_MODEL_NAMES modelType, Thinking? thinking,
+        ReasoningEffort? reasoningEffort) returns boolean {
+    if thinking is Thinking {
+        return thinking == ENABLED;
+    }
+    if reasoningEffort == NONE {
+        return false;
+    }
+    return modelType != "deepseek-chat";
+}
+
+isolated function getJsonOutputInstruction(map<json> schema) returns string =>
+    string `Respond only with a JSON object that conforms to the following JSON schema, without any other text.
+JSON schema:
+${schema.toJsonString()}`;
+
 isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEPSEEK_MODEL_NAMES modelType,
-        decimal temperature, ai:Prompt prompt, typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
+        decimal temperature, Thinking? thinking, ReasoningEffort? reasoningEffort, ai:Prompt prompt,
+        typedesc<json> expectedResponseTypedesc) returns anydata|ai:Error {
     observe:GenerateContentSpan span = observe:createGenerateContentSpan(modelType);
     span.addProvider("deepseek");
 
@@ -149,17 +188,30 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
         return err;
     }
 
-    DeepseekTool[] tools = getGetResultsTool(responseSchema.schema);
-    DeepseekChatUserMessage[] messages = [{role: ai:USER, content}];
     DeepSeekChatCompletionRequest request = {
-        messages,
+        messages: [],
         model: modelType,
         max_tokens: maxTokens,
-        temperature,
-        tools,
-        toolChoice: getGetResultsToolChoice()
+        temperature
     };
-    span.addInputMessages(messages);
+    addThinkingConfig(request, thinking, reasoningEffort);
+    // Thinking mode rejects named and `required` tool choices, so the JSON output mode is used instead
+    // of forcing the `getResults` tool call.
+    boolean useJsonOutput = isThinkingEnabled(modelType, thinking, reasoningEffort);
+    DeepseekChatUserMessage userMessage = {role: ai:USER, content};
+    if useJsonOutput {
+        DeepseekChatSystemMessage systemMessage = {
+            role: ai:SYSTEM,
+            content: getJsonOutputInstruction(responseSchema.schema)
+        };
+        request.messages = [systemMessage, userMessage];
+        request.response_format = {'type: JSON_OBJECT};
+    } else {
+        request.messages = [userMessage];
+        request.tools = getGetResultsTool(responseSchema.schema);
+        request.tool_choice = getGetResultsToolChoice();
+    }
+    span.addInputMessages(request.messages.toJson());
 
     DeepSeekChatCompletionResponse|error response = llmClient->/chat/completions.post(request);
     if response is error {
@@ -186,22 +238,13 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
     }
 
     DeepseekChatResponseMessage message = choices[0].message;
-    DeepseekChatResponseToolCall[]? toolCalls = message?.tool_calls;
-    if toolCalls is () || toolCalls.length() == 0 {
-        ai:Error err = error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
-        span.close(err);
-        return err;
+    map<json>|ai:Error llmResult = useJsonOutput ? getJsonOutputResult(message) : getToolCallResult(message);
+    if llmResult is ai:Error {
+        span.close(llmResult);
+        return llmResult;
     }
 
-    DeepseekChatResponseToolCall toolCall = toolCalls[0];
-    map<json>|error arguments = toolCall.'function.arguments.fromJsonStringWithType();
-    if arguments is error {
-        ai:Error err = error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
-        span.close(err);
-        return err;
-    }
-
-    anydata|error res = parseResponseAsType(arguments.toJsonString(), expectedResponseTypedesc,
+    anydata|error res = parseResponseAsType(llmResult.toJsonString(), expectedResponseTypedesc,
             responseSchema.isOriginallyJsonObject);
     if res is error {
         ai:Error err = error ai:LlmInvalidGenerationError(string `Invalid value returned from the LLM Client, expected: '${
@@ -222,4 +265,28 @@ isolated function generateLlmResponse(http:Client llmClient, int maxTokens, DEEP
     span.addOutputType(observe:JSON);
     span.close();
     return result;
+}
+
+isolated function getJsonOutputResult(DeepseekChatResponseMessage message) returns map<json>|ai:Error {
+    string? content = message.content;
+    if content is () || content.trim() == "" {
+        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+    }
+    map<json>|error result = content.fromJsonStringWithType();
+    if result is error {
+        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM, result);
+    }
+    return result;
+}
+
+isolated function getToolCallResult(DeepseekChatResponseMessage message) returns map<json>|ai:Error {
+    DeepseekChatResponseToolCall[]? toolCalls = message.tool_calls;
+    if toolCalls is () || toolCalls.length() == 0 {
+        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+    }
+    map<json>|error arguments = toolCalls[0].'function.arguments.fromJsonStringWithType();
+    if arguments is error {
+        return error(NO_RELEVANT_RESPONSE_FROM_THE_LLM);
+    }
+    return arguments;
 }

@@ -18,11 +18,13 @@ import ballerina/ai;
 import ballerina/test;
 
 const SERVICE_URL = "http://localhost:8080/llm/deepseek";
+const THINKING_SERVICE_URL = "http://localhost:8080/llm/thinking";
 const API_KEY = "not-a-real-api-key";
 const ERROR_MESSAGE = "Error occurred while attempting to parse the response from the LLM as the expected type. Retrying and/or validating the prompt could fix the response.";
 const RUNTIME_SCHEMA_NOT_SUPPORTED_ERROR_MESSAGE = "Runtime schema generation is not yet supported";
 
-final ModelProvider deepseekProvider = check new (API_KEY, DEEPSEEK_CHAT, SERVICE_URL);
+final ModelProvider deepseekProvider = check new (API_KEY, DEEPSEEK_V4_PRO, SERVICE_URL, thinking = DISABLED);
+final ModelProvider deepseekThinkingProvider = check new (API_KEY, serviceUrl = THINKING_SERVICE_URL);
 
 @test:Config
 function testGenerateMethodWithBasicReturnType() returns ai:Error? {
@@ -252,4 +254,97 @@ function testGenerateMethodWithTextChunk() returns error? {
     ReviewArray result = check deepseekProvider->generate(`How would you rate these text chunks out of ${maxScore}. ${chunks}. Thank you!`);
     Review r = check review.fromJsonStringWithType();
     test:assertEquals(result, [r, r]);
+}
+
+@test:Config
+function testGenerateMethodInThinkingMode() returns error? {
+    int rating = check deepseekThinkingProvider->generate(`Rate this blog out of 10.
+        Title: ${blog1.title}
+        Content: ${blog1.content}`);
+    test:assertEquals(rating, 4);
+
+    Review result = check deepseekThinkingProvider->generate(`Please rate this blog out of 10.
+        Title: ${blog2.title}
+        Content: ${blog2.content}`);
+    test:assertEquals(result, check review.fromJsonStringWithType(Review));
+
+    int[] ratings = check deepseekThinkingProvider->generate(`Evaluate this blogs out of 10.
+        Title: ${blog1.title}
+        Content: ${blog1.content}
+
+        Title: ${blog1.title}
+        Content: ${blog1.content}`);
+    test:assertEquals(ratings, [9, 1]);
+}
+
+@test:Config
+function testGenerateMethodWithInvalidTypeInThinkingMode() {
+    boolean|error result = deepseekThinkingProvider->generate(`What is ${1} + ${1}?`);
+    test:assertTrue(result is error);
+    test:assertTrue((<error>result).message().includes(ERROR_MESSAGE));
+}
+
+@test:Config
+function testChatWithDefaultConfigurations() returns error? {
+    ai:ChatAssistantMessage response = check deepseekThinkingProvider->chat([{role: ai:USER, content: "Hello"}], []);
+    string content = check response.content.ensureType();
+    map<json> configurations = check content.fromJsonStringWithType();
+    test:assertEquals(configurations["model"], DEEPSEEK_FLASH);
+    test:assertEquals(configurations["max_tokens"], 4096);
+    string[] keys = check configurations["keys"].cloneWithType();
+    foreach string key in ["thinking", "reasoning_effort", "tool_choice", "response_format"] {
+        test:assertTrue(keys.indexOf(key) is (), string `Unexpected '${key}' in the request`);
+    }
+}
+
+@test:Config
+function testChatWithThinkingConfigurations() returns error? {
+    ModelProvider provider = check new (API_KEY, DEEPSEEK_V4_PRO, THINKING_SERVICE_URL, 8192,
+        thinking = ENABLED, reasoningEffort = MAX);
+    ai:ChatAssistantMessage response = check provider->chat([{role: ai:USER, content: "Hello"}], []);
+    string content = check response.content.ensureType();
+    map<json> configurations = check content.fromJsonStringWithType();
+    test:assertEquals(configurations["model"], "deepseek-v4-pro");
+    test:assertEquals(configurations["max_tokens"], 8192);
+    test:assertEquals(configurations["thinking"], {"type": "enabled"});
+    test:assertEquals(configurations["reasoning_effort"], "max");
+}
+
+@test:Config
+function testReasoningContentRoundTripInToolCallLoop() returns error? {
+    ModelProvider provider = check new (API_KEY, DEEPSEEK_FLASH, THINKING_SERVICE_URL,
+        thinking = ENABLED, reasoningEffort = HIGH);
+    map<json> cityParameter = {"type": "object", "properties": {"city": {"type": "string"}}};
+    ai:ChatCompletionFunctions[] tools = [
+        {name: "getWeather", description: "Get the weather of a city", parameters: cityParameter},
+        {name: "getTime", description: "Get the local time of a city", parameters: cityParameter}
+    ];
+
+    ai:ChatMessage[] history = [{role: ai:USER, content: WEATHER_QUERY}];
+    ai:ChatAssistantMessage toolCallResponse = check provider->chat(history, tools);
+    ai:FunctionCall[] toolCalls = check toolCallResponse.toolCalls.ensureType();
+    test:assertEquals(toolCalls.map(toolCall => toolCall.id), ["call_weather", "call_time"]);
+
+    // Add each tool call and its result as a separate pair, the same way the agent records them.
+    foreach ai:FunctionCall toolCall in toolCalls {
+        history.push({role: ai:ASSISTANT, toolCalls: [toolCall]},
+            {role: "function", name: toolCall.name, content: "done", id: toolCall.id});
+    }
+    ai:ChatAssistantMessage answer = check provider->chat(history, tools);
+    test:assertEquals(answer.content, WEATHER_ANSWER);
+
+    history.push({role: ai:ASSISTANT, content: answer.content}, {role: ai:USER, content: "What about tomorrow?"});
+    ai:ChatAssistantMessage forecast = check provider->chat(history, tools);
+    test:assertEquals(forecast.content, FORECAST_ANSWER);
+}
+
+@test:Config
+function testThinkingModeResolution() {
+    test:assertTrue(isThinkingEnabled(DEEPSEEK_FLASH, (), ()));
+    test:assertTrue(isThinkingEnabled(DEEPSEEK_V4_PRO, (), HIGH));
+    test:assertTrue(isThinkingEnabled("deepseek-reasoner", (), ()));
+    test:assertTrue(isThinkingEnabled("deepseek-chat", ENABLED, ()));
+    test:assertFalse(isThinkingEnabled("deepseek-chat", (), ()));
+    test:assertFalse(isThinkingEnabled(DEEPSEEK_FLASH, DISABLED, HIGH));
+    test:assertFalse(isThinkingEnabled(DEEPSEEK_V4_PRO, (), NONE));
 }

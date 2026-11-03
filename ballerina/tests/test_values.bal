@@ -334,3 +334,10 @@ const expectedContentPartsForTextChunkArray = string `How would you rate these t
         Begin by preparing your soil with organic compost and ensure proper drainage. 
         Choose plants suitable for your climate zone, and remember to water them regularly. 
         Don't forget to mulch to retain moisture and prevent weeds. . Thank you!`;
+
+const JSON_SCHEMA_LABEL = "JSON schema:\n";
+const WEATHER_QUERY = "What is the weather and the local time in Colombo?";
+const TOOL_CALL_REASONING = "The user wants the weather and the time, so call both tools.";
+const WEATHER_ANSWER = "It is sunny in Colombo and the local time is 10.00 AM.";
+const WEATHER_ANSWER_REASONING = "Both tools returned, so summarize the results.";
+const FORECAST_ANSWER = "Tomorrow will be rainy in Colombo.";
